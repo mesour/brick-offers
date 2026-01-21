@@ -45,7 +45,15 @@
       "Bash(/var/www/html/vendor/phpstan:*)",
       "Bash(composer run:*)",
       "Bash(bin/console debug:router:*)",
-      "Bash(bin/console router:match:*)"
+      "Bash(bin/console router:match:*)",
+      "WebFetch(domain:ares.gov.cz)",
+      "WebFetch(domain:mfcr.cz)",
+      "WebFetch(domain:github.com)",
+      "Bash(bin/console doctrine:migrations:diff:*)",
+      "Bash(bin/console doctrine:migrations:migrate:*)",
+      "Bash(bin/console doctrine:schema:validate:*)",
+      "Bash(bin/console app:proposal:generate:*)",
+      "Bash(bin/console lint:container:*)"
     ],
     "deny": [],
     "ask": []

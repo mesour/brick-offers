@@ -1,4 +1,4 @@
-# real-estate-data-source
+# brick-offers
 
 RealEstate Data source
 
@@ -56,10 +56,11 @@ Modul pro vyhledávání a import leadů z různých zdrojů.
 ```
 src/
 ├── Enum/
-│   ├── LeadSource.php      # manual, google, seznam, firmy_cz, zive_firmy, najisto, zlatestranky, crawler
-│   └── LeadStatus.php      # new → queued → analyzing → ... → converted
+│   ├── LeadSource.php      # manual, google, seznam, firmy_cz, zive_firmy, najisto, zlatestranky, crawler, reference_crawler
+│   ├── LeadStatus.php      # new → queued → analyzing → ... → converted
+│   └── LeadType.php        # website, business_without_web
 ├── Entity/
-│   ├── Lead.php            # Hlavní entita leadu
+│   ├── Lead.php            # Hlavní entita leadu (s kontakty a technologiemi)
 │   └── Affiliate.php       # Affiliate pro tracking
 ├── Repository/
 │   ├── LeadRepository.php  # Bulk deduplikace, query by status
@@ -68,18 +69,29 @@ src/
 │   └── LeadDiscoverCommand.php  # CLI příkaz pro discovery
 ├── Controller/
 │   └── LeadImportController.php # API endpoint pro bulk import
-└── Service/Discovery/
-    ├── DiscoverySourceInterface.php
-    ├── DiscoveryResult.php         # DTO s auto-extrakcí domény
-    ├── AbstractDiscoverySource.php # Rate limiting, URL normalizace
-    ├── ManualDiscoverySource.php   # Přímé URL
-    ├── GoogleDiscoverySource.php   # Google Custom Search API
-    ├── SeznamDiscoverySource.php     # Seznam Search
-    ├── FirmyCzDiscoverySource.php    # Firmy.cz katalog
-    ├── ZiveFirmyDiscoverySource.php  # Živéfirmy.cz katalog
-    ├── NajistoDiscoverySource.php    # Najisto.cz katalog
-    ├── ZlatestrankyDiscoverySource.php # ZlatéStránky.cz katalog
-    └── CrawlerDiscoverySource.php    # Crawl existujících leadů
+├── Service/
+│   ├── Discovery/
+│   │   ├── DiscoverySourceInterface.php
+│   │   ├── DiscoveryResult.php         # DTO s auto-extrakcí domény
+│   │   ├── AbstractDiscoverySource.php # Rate limiting, URL normalizace, extraction
+│   │   ├── ManualDiscoverySource.php   # Přímé URL
+│   │   ├── GoogleDiscoverySource.php   # Google Custom Search API
+│   │   ├── SeznamDiscoverySource.php   # Seznam Search
+│   │   ├── FirmyCzDiscoverySource.php  # Firmy.cz katalog
+│   │   ├── ZiveFirmyDiscoverySource.php  # Živéfirmy.cz katalog
+│   │   ├── NajistoDiscoverySource.php    # Najisto.cz katalog
+│   │   ├── ZlatestrankyDiscoverySource.php # ZlatéStránky.cz katalog
+│   │   ├── CrawlerDiscoverySource.php    # Crawl existujících leadů
+│   │   └── ReferenceDiscoverySource.php  # Crawl agency portfolios
+│   └── Extractor/                        # Contact/Technology extraction
+│       ├── ContactExtractorInterface.php
+│       ├── PageData.php                  # DTO pro extrahovaná data
+│       ├── PageDataExtractor.php         # Orchestrátor
+│       ├── EmailExtractor.php            # Email s prioritizací
+│       ├── PhoneExtractor.php            # České telefony
+│       ├── IcoExtractor.php              # IČO validace (modulo 11)
+│       ├── TechnologyDetector.php        # CMS a tech stack
+│       └── SocialMediaExtractor.php      # FB, IG, LinkedIn, ...
 ```
 
 ### CLI Command: `app:lead:discover`
@@ -119,8 +131,9 @@ bin/console app:lead:discover <source> [options]
 | | `--query="rubrika:Autoservis"` | Kategorie |
 | | `--query="kraj:Jihočeský kraj"` | Dle kraje |
 | **crawler** | (bez query) | Crawluje existující leady |
+| **reference_crawler** | `--query="webdesign"` | Crawluje portfolia agentur |
 
-> **Tip:** Všechny zdroje podporují `--limit=N`, `--dry-run`, `--priority=N` a `--affiliate=HASH`
+> **Tip:** Všechny zdroje podporují `--limit=N`, `--dry-run`, `--priority=N`, `--affiliate=HASH` a `--extract` pro extrakci kontaktů
 
 #### Příklady použití
 
@@ -396,6 +409,8 @@ ZlatéStránky.cz discovery ukládá do metadata:
 | `--priority` | `-p` | Priorita 1-10 | 5 |
 | `--dry-run` | | Simulace bez ukládání | false |
 | `--batch-size` | | Velikost DB dávky | 100 |
+| `--extract` | `-x` | Extrahovat kontakty a detekovat technologie | false |
+| `--inner-source` | | Inner source pro reference_crawler | google |
 
 ### API Endpoints
 
@@ -512,6 +527,16 @@ bin/console doctrine:schema:validate
 | `source` | ENUM | Zdroj leadu |
 | `status` | ENUM | Status workflow |
 | `priority` | INT | Priorita 1-10 |
+| `type` | ENUM | Typ leadu (website, business_without_web) |
+| `has_website` | BOOL | Má firma web? |
+| `ico` | VARCHAR(8) | IČO firmy (validované) |
+| `company_name` | VARCHAR(255) | Název firmy |
+| `email` | VARCHAR(255) | Primární email |
+| `phone` | VARCHAR(50) | Primární telefon |
+| `address` | VARCHAR(500) | Adresa |
+| `detected_cms` | VARCHAR(50) | Detekovaný CMS (wordpress, shoptet, ...) |
+| `detected_technologies` | JSON | Detekované technologie |
+| `social_media` | JSON | Sociální sítě {facebook, instagram, ...} |
 | `metadata` | JSONB | Dodatečná data (title, snippet, query...) |
 | `affiliate_id` | UUID | FK na Affiliate (nullable) |
 | `created_at` | TIMESTAMP | Čas vytvoření |
@@ -522,6 +547,45 @@ bin/console doctrine:schema:validate
 ```
 NEW → QUEUED → ANALYZING → ANALYZED → APPROVED → SENT → RESPONDED → CONVERTED
 ```
+
+### Contact Extraction System
+
+Systém pro automatickou extrakci kontaktních údajů a detekci technologií z webových stránek.
+
+#### Použití
+
+```bash
+# Discovery s extrakcí kontaktů a technologií
+bin/console app:lead:discover manual --url=https://example.cz --extract
+
+# S katalogem
+bin/console app:lead:discover firmy_cz --query="restaurace" --limit=10 --extract
+```
+
+#### Podporované CMS
+
+| CMS | Detekce |
+|-----|---------|
+| WordPress | `/wp-content/`, meta generator |
+| Shoptet | `cdn.myshoptet.com`, `/user/documents/` |
+| Wix | `static.wixstatic.com` |
+| Squarespace | `sqsp.net` |
+| PrestaShop | `/modules/`, meta generator |
+| Shopify | `cdn.shopify.com` |
+| Webnode | `webnode.cz` |
+| Joomla | `/media/jui/` |
+| Drupal | `/sites/default/`, headers |
+| Magento | `/static/frontend/` |
+
+#### Extrahovaná data
+
+| Typ | Popis |
+|-----|-------|
+| **Email** | Prioritizace: info@, kontakt@ > sales@ > ostatní |
+| **Telefon** | České formáty, normalizace na +420XXXXXXXXX |
+| **IČO** | 8 číslic, validace modulo 11 |
+| **Sociální sítě** | Facebook, Instagram, LinkedIn, Twitter, YouTube |
+| **Technologie** | jQuery, Bootstrap, React, Vue, Angular, Google Analytics, ... |
 
 ### Deduplikace
 
@@ -1099,14 +1163,20 @@ HTTP 404
 # Manuální import URL
 bin/console app:lead:discover manual --url=https://example.com
 
+# S extrakcí kontaktů a technologií
+bin/console app:lead:discover manual --url=https://example.com --extract
+
 # Google search
 bin/console app:lead:discover google --query="webdesign Praha" --limit=100
 
 # Seznam search
 bin/console app:lead:discover seznam --query="restaurace Brno" --limit=50
 
-# Firmy.cz katalog
-bin/console app:lead:discover firmy_cz --query="kavárna" --limit=200
+# Firmy.cz katalog s extrakcí
+bin/console app:lead:discover firmy_cz --query="kavárna" --limit=200 --extract
+
+# Reference crawler (portfolia agentur)
+bin/console app:lead:discover reference_crawler --query="webdesign" --inner-source=google --limit=50
 
 # Crawl existujících leadů
 bin/console app:lead:discover crawler --limit=100
@@ -1258,6 +1328,134 @@ curl http://localhost:7270/api/leads/{id}/benchmark
 # Industry benchmark
 curl http://localhost:7270/api/industries/eshop/benchmark
 ```
+
+---
+
+## Multi-Tenant Architecture
+
+Systém podporuje multi-tenant architekturu pomocí `User` entity. Všechna hlavní data (leads, companies, industry_benchmarks) jsou navázána na konkrétního uživatele.
+
+### User Entity
+
+```php
+class User
+{
+    private string $code;        // Unikátní kód (lowercase, a-z0-9_-)
+    private string $name;        // Zobrazované jméno
+    private ?string $email;      // Volitelný email (unique)
+    private bool $active;        // Aktivní/neaktivní
+    private array $settings;     // JSONB pro uživatelská nastavení
+}
+```
+
+### Data Isolation
+
+- **Leads**: Doména je unikátní **v rámci uživatele** (ne globálně)
+- **Companies**: IČO je unikátní **v rámci uživatele**
+- **Industry Benchmarks**: Benchmarky jsou počítány **per user**
+
+### CLI Commands s --user
+
+Všechny příkazy pro práci s daty **vyžadují** `--user` parametr:
+
+```bash
+# Lead Discovery
+bin/console app:lead:discover manual --user=webdesign --url=https://example.cz
+bin/console app:lead:discover google --user=webdesign --query="webdesign Praha" --extract
+
+# Company ARES Sync
+bin/console app:company:sync-ares --user=webdesign --ico=27082440
+bin/console app:company:sync-ares --user=webdesign --limit=100
+
+# Benchmark Calculation
+bin/console app:benchmark:calculate --user=webdesign
+bin/console app:benchmark:calculate --user=webdesign --industry=e-commerce
+```
+
+### API Filtering
+
+V REST API lze filtrovat podle user code:
+
+```bash
+GET /api/leads?user.code=webdesign
+GET /api/companies?user.code=webdesign
+GET /api/industry_benchmarks?user.code=webdesign
+```
+
+### Vytvoření nového uživatele
+
+```bash
+# Via API
+curl -X POST http://localhost:7270/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"code": "new-user", "name": "New User", "email": "user@example.com"}'
+```
+
+---
+
+## Company & ARES Integration
+
+Systém podporuje propojení leadů s firmami pomocí IČO a automatické doplnění firemních údajů z registru ARES.
+
+### Koncept
+
+```
+Company (1 IČO)
+├── Lead (web1.cz)
+├── Lead (web2.cz)
+└── Lead (eshop.cz)
+```
+
+Jedna firma může mít více webů. ARES data se načtou jednou pro firmu, ne pro každý lead.
+
+### Company Entity
+
+| Pole | Typ | Popis |
+|------|-----|-------|
+| `ico` | VARCHAR(8) | IČO firmy (unikátní per user) |
+| `dic` | VARCHAR(20) | DIČ (z ARES) |
+| `name` | VARCHAR(255) | Obchodní jméno |
+| `legalForm` | VARCHAR(100) | Právní forma (s.r.o., a.s., ...) |
+| `street`, `city`, `postalCode` | VARCHAR | Adresa sídla |
+| `businessStatus` | VARCHAR(50) | Status (Aktivní, Zrušená, ...) |
+| `aresData` | JSONB | Kompletní ARES response |
+| `aresUpdatedAt` | TIMESTAMP | Datum poslední synchronizace |
+
+### CLI: `app:company:sync-ares`
+
+```bash
+# Sync konkrétního IČO
+bin/console app:company:sync-ares --user=webdesign --ico=27082440
+
+# Batch sync - firmy bez ARES dat nebo starší než 30 dní
+bin/console app:company:sync-ares --user=webdesign --limit=100
+
+# Force refresh všech firem
+bin/console app:company:sync-ares --user=webdesign --force-refresh --limit=50
+
+# Dry run
+bin/console app:company:sync-ares --user=webdesign --dry-run
+```
+
+### Lead Discovery s propojením na firmu
+
+```bash
+# Discovery s extrakcí kontaktů a propojením na firmy
+bin/console app:lead:discover manual --user=webdesign --url=https://example.cz --extract --link-company
+
+# Automaticky:
+# 1. Extrahuje IČO z webové stránky
+# 2. Vytvoří/najde Company pro toto IČO
+# 3. Načte ARES data
+# 4. Propojí Lead s Company
+```
+
+### ARES API Rate Limiting
+
+- Max 500 requests/min
+- Implementován delay 200ms mezi requesty
+- ARES data se cachují v `ares_data` JSONB
+- Refresh pouze pokud `ares_updated_at` > 30 dní
 
 ---
 

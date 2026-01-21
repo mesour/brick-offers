@@ -18,6 +18,7 @@ class PageDataExtractor
         private readonly IcoExtractor $icoExtractor,
         private readonly TechnologyDetector $technologyDetector,
         private readonly SocialMediaExtractor $socialMediaExtractor,
+        private readonly CompanyNameExtractor $companyNameExtractor,
         private readonly ?HttpClientInterface $httpClient = null,
         ?LoggerInterface $logger = null,
     ) {
@@ -36,6 +37,7 @@ class PageDataExtractor
         $icoResults = $this->icoExtractor->extract($html);
         $techData = $this->technologyDetector->detect($html, $headers);
         $socialMedia = $this->socialMediaExtractor->extract($html);
+        $companyName = $this->companyNameExtractor->extractSingle($html);
 
         return new PageData(
             emails: $emails,
@@ -44,6 +46,7 @@ class PageDataExtractor
             cms: $techData['cms'],
             technologies: $techData['technologies'],
             socialMedia: $socialMedia,
+            companyName: $companyName,
         );
     }
 

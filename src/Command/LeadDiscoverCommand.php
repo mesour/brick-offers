@@ -7,11 +7,17 @@ namespace App\Command;
 use App\Entity\Lead;
 use App\Enum\LeadSource;
 use App\Enum\LeadStatus;
+use App\Enum\LeadType;
+use App\Entity\User;
 use App\Repository\AffiliateRepository;
 use App\Repository\LeadRepository;
+use App\Repository\UserRepository;
+use App\Service\Discovery\AbstractDiscoverySource;
 use App\Service\Discovery\DiscoveryResult;
 use App\Service\Discovery\DiscoverySourceInterface;
+use App\Service\Company\CompanyService;
 use App\Service\Discovery\ReferenceDiscoverySource;
+use App\Service\Extractor\PageDataExtractor;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -39,7 +45,10 @@ class LeadDiscoverCommand extends Command
         iterable $sources,
         private readonly LeadRepository $leadRepository,
         private readonly AffiliateRepository $affiliateRepository,
+        private readonly UserRepository $userRepository,
         private readonly EntityManagerInterface $entityManager,
+        private readonly PageDataExtractor $pageDataExtractor,
+        private readonly CompanyService $companyService,
     ) {
         parent::__construct();
 
@@ -112,6 +121,24 @@ class LeadDiscoverCommand extends Command
                 InputOption::VALUE_REQUIRED,
                 'Inner source for reference_crawler (google, seznam, firmy_cz, etc.)',
                 'google'
+            )
+            ->addOption(
+                'extract',
+                'x',
+                InputOption::VALUE_NONE,
+                'Extract contact info (email, phone, IČO) and detect technologies'
+            )
+            ->addOption(
+                'link-company',
+                null,
+                InputOption::VALUE_NONE,
+                'Link leads to Company entities based on IČO (requires --extract, fetches ARES data)'
+            )
+            ->addOption(
+                'user',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'User code (required) - all discovered leads will belong to this user'
             );
     }
 
@@ -164,6 +191,42 @@ class LeadDiscoverCommand extends Command
         $priority = (int) $input->getOption('priority');
         $dryRun = $input->getOption('dry-run');
         $batchSize = (int) $input->getOption('batch-size');
+        $extractEnabled = $input->getOption('extract');
+        $linkCompany = $input->getOption('link-company');
+        $userCode = $input->getOption('user');
+
+        // Get user (required)
+        if ($userCode === null) {
+            $io->error('User is required. Use --user=<code>');
+
+            return Command::FAILURE;
+        }
+
+        $user = $this->userRepository->findByCode($userCode);
+        if ($user === null) {
+            $io->error(sprintf('User with code "%s" not found', $userCode));
+
+            return Command::FAILURE;
+        }
+
+        $io->note(sprintf('Using user: %s (%s)', $user->getName(), $user->getCode()));
+
+        // --link-company requires extraction
+        if ($linkCompany && !$extractEnabled) {
+            $extractEnabled = true;
+            $io->note('Enabling extraction (required for --link-company)');
+        }
+
+        // Configure extraction if enabled and source supports it
+        if ($extractEnabled && $discoverySource instanceof AbstractDiscoverySource) {
+            $discoverySource->setPageDataExtractor($this->pageDataExtractor);
+            $discoverySource->setExtractionEnabled(true);
+            $io->note('Extraction enabled - will extract contact info and detect technologies');
+        }
+
+        if ($linkCompany) {
+            $io->note('Company linking enabled - leads with IČO will be linked to Company entities');
+        }
 
         // Validate priority
         $priority = max(1, min(10, $priority));
@@ -241,9 +304,9 @@ class LeadDiscoverCommand extends Command
         $allResults = $this->deduplicateByDomain($allResults);
         $io->text(sprintf('%d unique domains after deduplication', count($allResults)));
 
-        // Check existing domains in database
+        // Check existing domains in database (per user)
         $domains = array_map(fn (DiscoveryResult $r) => $r->domain, $allResults);
-        $existingDomains = $this->leadRepository->findExistingDomains($domains);
+        $existingDomains = $this->leadRepository->findExistingDomainsForUser($domains, $user);
 
         $newResults = array_filter(
             $allResults,
@@ -253,7 +316,7 @@ class LeadDiscoverCommand extends Command
         $io->text(sprintf('%d new domains (skipping %d existing)', count($newResults), count($existingDomains)));
 
         if (empty($newResults)) {
-            $io->success('All domains already exist in database');
+            $io->success('All domains already exist in database for this user');
 
             return Command::SUCCESS;
         }
@@ -262,7 +325,7 @@ class LeadDiscoverCommand extends Command
         if ($dryRun) {
             $this->displayResults($io, $newResults);
         } else {
-            $savedCount = $this->saveLeads($io, $newResults, $source, $affiliate, $priority, $batchSize);
+            $savedCount = $this->saveLeads($io, $newResults, $source, $affiliate, $priority, $batchSize, $linkCompany, $user);
             $io->success(sprintf('Saved %d new leads', $savedCount));
         }
 
@@ -318,20 +381,27 @@ class LeadDiscoverCommand extends Command
         ?\App\Entity\Affiliate $affiliate,
         int $priority,
         int $batchSize,
+        bool $linkCompany,
+        User $user,
     ): int {
         $savedCount = 0;
+        $linkedCount = 0;
         $batch = 0;
 
         $io->progressStart(count($results));
 
         foreach ($results as $result) {
             $lead = new Lead();
+            $lead->setUser($user);
             $lead->setUrl($result->url);
             $lead->setDomain($result->domain);
             $lead->setSource($source);
             $lead->setStatus(LeadStatus::NEW);
             $lead->setPriority($priority);
             $lead->setMetadata($result->metadata);
+
+            // Populate fields from extracted data
+            $this->populateLeadFromExtractedData($lead, $result->metadata);
 
             if ($affiliate !== null) {
                 $lead->setAffiliate($affiliate);
@@ -340,6 +410,16 @@ class LeadDiscoverCommand extends Command
             $this->entityManager->persist($lead);
             $savedCount++;
             $batch++;
+
+            // Link to company if enabled and IČO is present
+            if ($linkCompany && $lead->getIco() !== null) {
+                // Flush first to ensure lead has ID
+                $this->entityManager->flush();
+                $company = $this->companyService->linkLeadToCompany($lead);
+                if ($company !== null) {
+                    $linkedCount++;
+                }
+            }
 
             if ($batch >= $batchSize) {
                 $this->entityManager->flush();
@@ -357,6 +437,65 @@ class LeadDiscoverCommand extends Command
 
         $io->progressFinish();
 
+        if ($linkCompany && $linkedCount > 0) {
+            $io->text(sprintf('Linked %d leads to companies', $linkedCount));
+        }
+
         return $savedCount;
+    }
+
+    /**
+     * Populate Lead entity fields from extracted metadata.
+     *
+     * @param array<string, mixed> $metadata
+     */
+    private function populateLeadFromExtractedData(Lead $lead, array $metadata): void
+    {
+        // Set type and hasWebsite
+        $lead->setType(LeadType::WEBSITE);
+        $lead->setHasWebsite(true);
+
+        // Set email from extracted emails (first one is highest priority)
+        if (!empty($metadata['extracted_emails'])) {
+            $lead->setEmail($metadata['extracted_emails'][0]);
+        }
+
+        // Set phone from extracted phones (first one)
+        if (!empty($metadata['extracted_phones'])) {
+            $lead->setPhone($metadata['extracted_phones'][0]);
+        }
+
+        // Set IČO if extracted
+        if (!empty($metadata['extracted_ico'])) {
+            $lead->setIco($metadata['extracted_ico']);
+        }
+
+        // Set company name if available
+        if (!empty($metadata['extracted_company_name'])) {
+            $lead->setCompanyName($metadata['extracted_company_name']);
+        } elseif (!empty($metadata['business_name'])) {
+            // Fallback to business name from catalog sources (e.g., Firmy.cz)
+            $lead->setCompanyName($metadata['business_name']);
+        }
+
+        // Set address if extracted
+        if (!empty($metadata['extracted_address'])) {
+            $lead->setAddress($metadata['extracted_address']);
+        }
+
+        // Set detected CMS
+        if (!empty($metadata['detected_cms'])) {
+            $lead->setDetectedCms($metadata['detected_cms']);
+        }
+
+        // Set detected technologies
+        if (!empty($metadata['detected_technologies'])) {
+            $lead->setDetectedTechnologies($metadata['detected_technologies']);
+        }
+
+        // Set social media
+        if (!empty($metadata['social_media'])) {
+            $lead->setSocialMedia($metadata['social_media']);
+        }
     }
 }

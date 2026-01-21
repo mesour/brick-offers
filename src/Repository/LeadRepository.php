@@ -34,6 +34,7 @@ class LeadRepository extends ServiceEntityRepository
      *
      * @param array<string> $domains
      * @return array<string> Array of domains that already exist
+     * @deprecated Use findExistingDomainsForUser instead
      */
     public function findExistingDomains(array $domains): array
     {
@@ -45,6 +46,30 @@ class LeadRepository extends ServiceEntityRepository
             ->select('l.domain')
             ->where('l.domain IN (:domains)')
             ->setParameter('domains', $domains);
+
+        $result = $qb->getQuery()->getArrayResult();
+
+        return array_column($result, 'domain');
+    }
+
+    /**
+     * Find existing domains from a list for a specific user.
+     *
+     * @param array<string> $domains
+     * @return array<string> Array of domains that already exist for this user
+     */
+    public function findExistingDomainsForUser(array $domains, \App\Entity\User $user): array
+    {
+        if (empty($domains)) {
+            return [];
+        }
+
+        $qb = $this->createQueryBuilder('l')
+            ->select('l.domain')
+            ->where('l.domain IN (:domains)')
+            ->andWhere('l.user = :user')
+            ->setParameter('domains', $domains)
+            ->setParameter('user', $user);
 
         $result = $qb->getQuery()->getArrayResult();
 

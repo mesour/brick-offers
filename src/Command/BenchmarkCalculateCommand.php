@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\Analysis;
+use App\Entity\User;
 use App\Enum\Industry;
 use App\Repository\AnalysisRepository;
 use App\Repository\IndustryBenchmarkRepository;
+use App\Repository\UserRepository;
 use App\Service\Benchmark\BenchmarkCalculator;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -28,6 +30,7 @@ class BenchmarkCalculateCommand extends Command
         private readonly BenchmarkCalculator $benchmarkCalculator,
         private readonly IndustryBenchmarkRepository $benchmarkRepository,
         private readonly AnalysisRepository $analysisRepository,
+        private readonly UserRepository $userRepository,
         private readonly EntityManagerInterface $entityManager,
     ) {
         parent::__construct();
@@ -36,6 +39,12 @@ class BenchmarkCalculateCommand extends Command
     protected function configure(): void
     {
         $this
+            ->addOption(
+                'user',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'User code (required) - calculate benchmarks for this user'
+            )
             ->addOption(
                 'industry',
                 'i',
@@ -72,13 +81,29 @@ class BenchmarkCalculateCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
+        $userCode = $input->getOption('user');
         $industryFilter = $input->getOption('industry');
         $compareAnalysisId = $input->getOption('compare');
         $dryRun = $input->getOption('dry-run');
         $showStats = $input->getOption('show-stats');
         $showTopIssues = $input->getOption('show-top-issues');
 
+        // Get user (required)
+        if ($userCode === null) {
+            $io->error('User is required. Use --user=<code>');
+
+            return Command::FAILURE;
+        }
+
+        $user = $this->userRepository->findByCode($userCode);
+        if ($user === null) {
+            $io->error(sprintf('User with code "%s" not found', $userCode));
+
+            return Command::FAILURE;
+        }
+
         $io->title('Industry Benchmark Calculator');
+        $io->note(sprintf('Using user: %s (%s)', $user->getName(), $user->getCode()));
 
         if ($dryRun) {
             $io->note('DRY RUN MODE - No changes will be saved');
@@ -86,14 +111,14 @@ class BenchmarkCalculateCommand extends Command
 
         // Show statistics
         if ($showStats) {
-            $this->displayStatistics($io, $showTopIssues);
+            $this->displayStatistics($io, $user, $showTopIssues);
 
             return Command::SUCCESS;
         }
 
         // Compare analysis against benchmark
         if ($compareAnalysisId !== null) {
-            return $this->executeComparison($io, $compareAnalysisId);
+            return $this->executeComparison($io, $compareAnalysisId, $user);
         }
 
         // Parse industry filter
@@ -112,13 +137,13 @@ class BenchmarkCalculateCommand extends Command
 
         // Calculate benchmarks
         if ($industry !== null) {
-            return $this->executeForIndustry($io, $industry, $dryRun);
+            return $this->executeForIndustry($io, $industry, $user, $dryRun);
         }
 
-        return $this->executeForAllIndustries($io, $dryRun);
+        return $this->executeForAllIndustries($io, $user, $dryRun);
     }
 
-    private function executeForIndustry(SymfonyStyle $io, Industry $industry, bool $dryRun): int
+    private function executeForIndustry(SymfonyStyle $io, Industry $industry, User $user, bool $dryRun): int
     {
         $io->section(sprintf('Calculating benchmark for: %s', $industry->getLabel()));
 
@@ -126,8 +151,11 @@ class BenchmarkCalculateCommand extends Command
             // Show what would be calculated
             $count = $this->analysisRepository->createQueryBuilder('a')
                 ->select('COUNT(a.id)')
+                ->innerJoin('a.lead', 'l')
                 ->where('a.industry = :industry')
+                ->andWhere('l.user = :user')
                 ->setParameter('industry', $industry)
+                ->setParameter('user', $user)
                 ->getQuery()
                 ->getSingleScalarResult();
 
@@ -136,7 +164,7 @@ class BenchmarkCalculateCommand extends Command
             return Command::SUCCESS;
         }
 
-        $benchmark = $this->benchmarkCalculator->calculateForIndustry($industry);
+        $benchmark = $this->benchmarkCalculator->calculateForIndustry($industry, $user);
 
         if ($benchmark === null) {
             $io->warning('No analyses found for this industry');
@@ -152,13 +180,13 @@ class BenchmarkCalculateCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function executeForAllIndustries(SymfonyStyle $io, bool $dryRun): int
+    private function executeForAllIndustries(SymfonyStyle $io, User $user, bool $dryRun): int
     {
         $io->section('Calculating benchmarks for all industries');
 
         if ($dryRun) {
-            // Count analyses per industry
-            $counts = $this->analysisRepository->countByIndustry();
+            // Count analyses per industry for this user
+            $counts = $this->analysisRepository->countByIndustryForUser($user);
 
             $io->table(
                 ['Industry', 'Analyses'],
@@ -170,7 +198,7 @@ class BenchmarkCalculateCommand extends Command
             return Command::SUCCESS;
         }
 
-        $stats = $this->benchmarkCalculator->calculateForAllIndustries();
+        $stats = $this->benchmarkCalculator->calculateForAllIndustries($user);
 
         $io->section('Results');
         $io->definitionList(
@@ -184,7 +212,7 @@ class BenchmarkCalculateCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function executeComparison(SymfonyStyle $io, string $analysisId): int
+    private function executeComparison(SymfonyStyle $io, string $analysisId, User $user): int
     {
         try {
             $uuid = Uuid::fromString($analysisId);
@@ -196,9 +224,16 @@ class BenchmarkCalculateCommand extends Command
                 return Command::FAILURE;
             }
 
+            // Verify analysis belongs to user
+            if ($analysis->getLead()?->getUser() !== $user) {
+                $io->error('Analysis does not belong to this user');
+
+                return Command::FAILURE;
+            }
+
             $io->section(sprintf('Comparing analysis for: %s', $analysis->getLead()?->getDomain() ?? 'Unknown'));
 
-            $comparison = $this->benchmarkCalculator->compareWithBenchmark($analysis);
+            $comparison = $this->benchmarkCalculator->compareWithBenchmark($analysis, $user);
 
             if ($comparison['ranking'] === 'unknown') {
                 $io->warning('Analysis has no industry assigned');
@@ -250,11 +285,11 @@ class BenchmarkCalculateCommand extends Command
         }
     }
 
-    private function displayStatistics(SymfonyStyle $io, bool $showTopIssues): void
+    private function displayStatistics(SymfonyStyle $io, User $user, bool $showTopIssues): void
     {
         $io->section('Current Benchmark Statistics');
 
-        $benchmarks = $this->benchmarkRepository->findLatestForAllIndustries();
+        $benchmarks = $this->benchmarkRepository->findLatestForAllIndustriesForUser($user);
 
         if (empty($benchmarks)) {
             $io->warning('No benchmarks found. Run the command without --show-stats to calculate them.');

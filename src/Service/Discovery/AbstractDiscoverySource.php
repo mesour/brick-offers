@@ -4,17 +4,69 @@ declare(strict_types=1);
 
 namespace App\Service\Discovery;
 
+use App\Service\Extractor\PageData;
+use App\Service\Extractor\PageDataExtractor;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 abstract class AbstractDiscoverySource implements DiscoverySourceInterface
 {
     protected int $requestDelayMs = 500;
+    protected ?PageDataExtractor $pageDataExtractor = null;
+    protected bool $extractionEnabled = false;
 
     public function __construct(
         protected readonly HttpClientInterface $httpClient,
         protected readonly LoggerInterface $logger,
     ) {}
+
+    /**
+     * Set the page data extractor for contact/technology extraction.
+     */
+    public function setPageDataExtractor(?PageDataExtractor $extractor): void
+    {
+        $this->pageDataExtractor = $extractor;
+    }
+
+    /**
+     * Enable or disable extraction for discovery.
+     */
+    public function setExtractionEnabled(bool $enabled): void
+    {
+        $this->extractionEnabled = $enabled;
+    }
+
+    /**
+     * Extract page data from a URL if extractor is configured and enabled.
+     */
+    protected function extractPageData(string $url): ?PageData
+    {
+        if (!$this->extractionEnabled || $this->pageDataExtractor === null) {
+            return null;
+        }
+
+        return $this->pageDataExtractor->extractFromUrl($url);
+    }
+
+    /**
+     * Create a DiscoveryResult with optional page data extraction.
+     *
+     * @param array<string, mixed> $metadata
+     */
+    protected function createResultWithExtraction(
+        string $url,
+        array $metadata = [],
+        bool $extractData = true,
+    ): DiscoveryResult {
+        if ($extractData && $this->extractionEnabled) {
+            $pageData = $this->extractPageData($url);
+            if ($pageData !== null) {
+                $metadata = array_merge($metadata, $pageData->toMetadata());
+            }
+        }
+
+        return new DiscoveryResult($url, $metadata);
+    }
 
     /**
      * Apply rate limiting between requests.

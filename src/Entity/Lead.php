@@ -26,11 +26,13 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: LeadRepository::class)]
 #[ORM\Table(name: 'leads')]
-#[ORM\UniqueConstraint(name: 'leads_domain_unique', columns: ['domain'])]
+#[ORM\UniqueConstraint(name: 'leads_user_domain_unique', columns: ['user_id', 'domain'])]
 #[ORM\Index(name: 'leads_status_idx', columns: ['status'])]
 #[ORM\Index(name: 'leads_source_idx', columns: ['source'])]
 #[ORM\Index(name: 'leads_industry_idx', columns: ['industry'])]
 #[ORM\Index(name: 'leads_last_analyzed_at_idx', columns: ['last_analyzed_at'])]
+#[ORM\Index(name: 'leads_company_idx', columns: ['company_id'])]
+#[ORM\Index(name: 'leads_user_idx', columns: ['user_id'])]
 #[ORM\HasLifecycleCallbacks]
 #[ApiResource(
     operations: [
@@ -78,6 +80,10 @@ class Lead
     #[ORM\ManyToOne(targetEntity: Affiliate::class, inversedBy: 'leads')]
     #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
     private ?Affiliate $affiliate = null;
+
+    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'leads')]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $user = null;
 
     #[ORM\Column(type: Types::STRING, length: 20, enumType: LeadStatus::class)]
     private LeadStatus $status = LeadStatus::NEW;
@@ -128,7 +134,12 @@ class Lead
     #[ORM\Column(options: ['default' => true])]
     private bool $hasWebsite = true;
 
-    // Company identification
+    // Company relationship
+    #[ORM\ManyToOne(targetEntity: Company::class, inversedBy: 'leads')]
+    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
+    private ?Company $company = null;
+
+    // Company identification (denormalized for quick access)
     #[ORM\Column(length: 8, nullable: true)]
     private ?string $ico = null;
 
@@ -248,6 +259,18 @@ class Lead
     public function setAffiliate(?Affiliate $affiliate): static
     {
         $this->affiliate = $affiliate;
+
+        return $this;
+    }
+
+    public function getUser(): ?User
+    {
+        return $this->user;
+    }
+
+    public function setUser(?User $user): static
+    {
+        $this->user = $user;
 
         return $this;
     }
@@ -459,6 +482,18 @@ class Lead
     public function setHasWebsite(bool $hasWebsite): static
     {
         $this->hasWebsite = $hasWebsite;
+
+        return $this;
+    }
+
+    public function getCompany(): ?Company
+    {
+        return $this->company;
+    }
+
+    public function setCompany(?Company $company): static
+    {
+        $this->company = $company;
 
         return $this;
     }

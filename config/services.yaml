@@ -22,6 +22,12 @@ services:
             tags: ['app.discovery_source']
         App\Service\Analyzer\LeadAnalyzerInterface:
             tags: ['app.lead_analyzer']
+        App\Service\Demand\DemandSignalSourceInterface:
+            tags: ['app.demand_source']
+        App\Service\Competitor\CompetitorMonitorInterface:
+            tags: ['app.competitor_monitor']
+        App\Service\Proposal\ProposalGeneratorInterface:
+            tags: ['app.proposal_generator']
 
     # Configure Google Discovery Source with API credentials
     App\Service\Discovery\GoogleDiscoverySource:
@@ -59,3 +65,36 @@ services:
 
     # Bind BrowserInterface to BrowserlessClient
     App\Service\Browser\BrowserInterface: '@App\Service\Browser\BrowserlessClient'
+
+    # Configure DemandMonitorCommand with tagged sources
+    App\Command\DemandMonitorCommand:
+        arguments:
+            $sources: !tagged_iterator app.demand_source
+
+    # Configure CompetitorMonitorCommand with tagged monitors
+    App\Command\CompetitorMonitorCommand:
+        arguments:
+            $monitors: !tagged_iterator app.competitor_monitor
+
+    # Configure Claude AI Service
+    App\Service\AI\ClaudeService:
+        arguments:
+            $apiKey: '%env(CLAUDE_API_KEY)%'
+            $useCli: '%env(bool:CLAUDE_USE_CLI)%'
+            $model: '%env(CLAUDE_MODEL)%'
+            $maxTokens: '%env(int:CLAUDE_MAX_TOKENS)%'
+
+    # Configure Screenshot Service
+    App\Service\Screenshot\ScreenshotService:
+        arguments:
+            $chromeEndpoint: '%env(CHROME_SCREENSHOT_URL)%'
+
+    # Configure ProposalService with tagged generators
+    App\Service\Proposal\ProposalService:
+        arguments:
+            $generators: !tagged_iterator app.proposal_generator
+
+    # Configure proposal generators with prompts directory
+    App\Service\Proposal\DesignProposalGenerator:
+        arguments:
+            $promptsDir: '%kernel.project_dir%/templates/prompts'

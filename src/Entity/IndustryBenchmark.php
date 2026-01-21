@@ -22,8 +22,9 @@ use Symfony\Component\Uid\Uuid;
  */
 #[ORM\Entity(repositoryClass: IndustryBenchmarkRepository::class)]
 #[ORM\Table(name: 'industry_benchmarks')]
-#[ORM\UniqueConstraint(name: 'benchmarks_industry_period_unique', columns: ['industry', 'period_start'])]
+#[ORM\UniqueConstraint(name: 'benchmarks_user_industry_period_unique', columns: ['user_id', 'industry', 'period_start'])]
 #[ORM\Index(name: 'benchmarks_industry_idx', columns: ['industry', 'period_start'])]
+#[ORM\Index(name: 'benchmarks_user_idx', columns: ['user_id'])]
 #[ORM\HasLifecycleCallbacks]
 #[ApiResource(
     operations: [
@@ -42,6 +43,10 @@ class IndustryBenchmark
     #[ORM\GeneratedValue(strategy: 'CUSTOM')]
     #[ORM\CustomIdGenerator(class: 'doctrine.uuid_generator')]
     private ?Uuid $id = null;
+
+    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'industryBenchmarks')]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $user = null;
 
     #[ORM\Column(type: Types::STRING, length: 50, enumType: Industry::class)]
     private ?Industry $industry = null;
@@ -82,6 +87,18 @@ class IndustryBenchmark
     public function getId(): ?Uuid
     {
         return $this->id;
+    }
+
+    public function getUser(): ?User
+    {
+        return $this->user;
+    }
+
+    public function setUser(?User $user): static
+    {
+        $this->user = $user;
+
+        return $this;
     }
 
     public function getIndustry(): ?Industry
