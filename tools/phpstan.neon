@@ -1,0 +1,35 @@
+includes:
+    - ../vendor/phpstan/phpstan-strict-rules/rules.neon
+#    - ../vendor/phpstan/phpstan-doctrine/extension.neon
+#    - ../vendor/phpstan/phpstan-doctrine/rules.neon
+
+parameters:
+    level: 9
+    paths:
+        - ../src
+        - ../libs
+        - ../tests
+    treatPhpDocTypesAsCertain: false
+#    doctrine:
+#        objectManagerLoader: ../.infrastructure/PHPStan/object-manager.php
+#    excludePaths:
+#        - ../tests/Api/Support/_*
+    exceptions:
+        check:
+            missingCheckedExceptionInThrows: true
+            tooWideThrowType: true
+        uncheckedExceptionClasses:
+            - 'LogicException'
+            - 'PHPUnit\Framework\Exception'
+            - 'PHPUnit\Framework\MockObject\Exception'
+            - 'PHPUnit\Event\NoPreviousThrowableException'
+        checkedExceptionClasses:
+            - 'Throwable'
+    ignoreErrors:
+        - '#Property App\\.+::\$id \(int\|null\) is never assigned int so it can be removed from the property type\.#'
+        - '#Method App\\Pages\\Database\\PageRepository::findAllForSelect\(\) should return array<string, string> but returns array<int\|string, string>\.#'
+        - '#Parameter \#1 \$control of method Nette\\Forms\\Controls\\BaseControl::addConditionOn\(\) expects Nette\\Forms\\Control, Nette\\ComponentModel\\IComponent given\.#'
+        - '#Call to an undefined method Nette\\ComponentModel\\IComponent::addError\(\)\.#'
+        - '#Access to an undefined property Nette\\Application\\UI\\Template\|stdClass::\$[a-zA-Z0-9]+\.#'
+        - '#Property Nette\\Forms\\Form::\$onSuccess.+#'
+        - '#Cannot cast mixed to (int|string)\.#'

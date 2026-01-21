@@ -1,5 +1,142 @@
 # Session Log
 
+## 2026-01-21 (Email Module)
+
+### Focus
+Implementace Email Module - odesílání emailů s abstraktním provider systémem a blacklist managementem
+
+### Completed
+- Vytvořeny enumy:
+  - `EmailStatus` (pending, sent, delivered, opened, clicked, bounced, complained, failed)
+  - `EmailBounceType` (hard, soft, complaint, unsubscribe)
+  - `EmailProvider` (smtp, ses, null)
+- Vytvořeny entity:
+  - `EmailLog` - log odeslaných emailů s delivery tracking
+  - `EmailBlacklist` - dual blacklist (global pro bounces, per-user pro unsubscribes)
+- Vytvořeny repository:
+  - `EmailLogRepository` - findByMessageId, countSentLastHour, getStatistics
+  - `EmailBlacklistRepository` - isBlacklisted, findEntry, findGlobalBounces
+- Vytvořen service layer:
+  - `EmailSenderInterface` - abstrakce pro email providers
+  - `EmailMessage` / `EmailSendResult` DTOs
+  - `AbstractEmailSender` - base class s buildSymfonyEmail()
+  - `SmtpEmailSender` - Symfony Mailer integration
+  - `SesEmailSender` - AWS SES integration
+  - `NullEmailSender` - testing sender
+  - `EmailBlacklistService` - blacklist management
+  - `EmailService` - orchestrace (send, processBounce, processDelivery)
+- Vytvořeny controllers:
+  - `SesWebhookController` - POST /api/webhook/ses pro SNS notifications
+  - Aktualizován `TrackingController` - unsubscribe s confirmation form
+- Vytvořeny commands:
+  - `app:email:send` - odesílání approved offers
+  - `app:email:cleanup` - retention policy cleanup (365 dní)
+  - `app:email:blacklist` - add/remove/check/list
+- Integrace s `OfferService.send()` - volá EmailService
+- Konfigurace:
+  - `config/packages/mailer.yaml` - Symfony Mailer
+  - `config/services.yaml` - tagged senders
+  - `.env.template` - EMAIL_*, AWS_SES_*, MAILER_DSN
+- Migrace `Version20260121170000` pro email_logs a email_blacklist
+
+### Files Changed
+- `src/Enum/EmailStatus.php` - **nový soubor**
+- `src/Enum/EmailBounceType.php` - **nový soubor**
+- `src/Enum/EmailProvider.php` - **nový soubor**
+- `src/Entity/EmailLog.php` - **nový soubor**
+- `src/Entity/EmailBlacklist.php` - **nový soubor**
+- `src/Repository/EmailLogRepository.php` - **nový soubor**
+- `src/Repository/EmailBlacklistRepository.php` - **nový soubor**
+- `src/Service/Email/*.php` - **nové soubory** (10 souborů)
+- `src/Controller/SesWebhookController.php` - **nový soubor**
+- `src/Controller/TrackingController.php` - aktualizován unsubscribe()
+- `src/Command/EmailSendCommand.php` - **nový soubor**
+- `src/Command/EmailCleanupCommand.php` - **nový soubor**
+- `src/Command/EmailBlacklistCommand.php` - **nový soubor**
+- `src/Service/Offer/OfferService.php` - integrace EmailService
+- `config/services.yaml` - email sender tagging
+- `config/packages/mailer.yaml` - **nový soubor**
+- `.env.template` - přidány email proměnné
+- `migrations/Version20260121170000.php` - **nový soubor**
+- `.ai/history/email-module.md` - **nový soubor**
+
+### Blockers
+Žádné
+
+---
+
+## 2026-01-21 (Offer Module)
+
+### Focus
+Implementace Offer Module - email offer generování se schvalovacím workflow
+
+### Completed
+- Vytvořen `OfferStatus` enum (9 stavů s state machine logikou)
+- Vytvořena `Offer` entita:
+  - Per-user ownership s rate limiting
+  - Workflow: draft → approval → sent → tracking
+  - Email tracking (open, click, responded, converted)
+  - AI personalization metadata
+  - Propojení na Lead, Proposal, Analysis, EmailTemplate
+- Vytvořena `UserEmailTemplate` entita:
+  - Per-user template customization
+  - Industry-specific templates
+  - AI personalization prompt override
+- Vytvořen `OfferRepository` s query metodami:
+  - `findByTrackingToken()` pro email tracking
+  - `countSentToday()`, `countSentLastHour()`, `countSentToDomainToday()` pro rate limiting
+  - `getConversionStats()` pro analytics
+- Vytvořen `UserEmailTemplateRepository`
+- Vytvořeny DTOs:
+  - `OfferContent` - výsledek generování obsahu
+  - `RateLimitResult` - výsledek kontroly rate limitů
+- Vytvořen `RateLimitChecker` service:
+  - Default: 10/hour, 50/day, 3/domain/day
+  - Konfigurovatelné přes User.settings['rate_limits']
+- Vytvořen `OfferGenerator` service:
+  - Template hierarchy: UserEmailTemplate → EmailTemplate → default
+  - Variable substitution (lead, analysis, proposal data)
+  - AI personalizace přes ClaudeService
+  - Tracking pixel a unsubscribe link injection
+- Vytvořen `OfferService` pro orchestraci:
+  - create, generate, approve, reject, send workflow
+  - trackOpen(), trackClick(), markResponded(), markConverted()
+- Vytvořen `OfferController` s REST API:
+  - POST /api/offers/generate
+  - POST /api/offers/{id}/submit, /approve, /reject, /send
+  - GET /api/offers/{id}/preview
+  - GET /api/offers/rate-limits
+  - POST /api/offers/{id}/responded, /converted
+- Vytvořen `TrackingController`:
+  - GET /api/track/open/{token} - tracking pixel (1x1 GIF)
+  - GET /api/track/click/{token}?url= - click tracking redirect
+  - GET /unsubscribe/{token} - unsubscribe endpoint
+- Vytvořen `OfferGenerateCommand`:
+  - `--lead`, `--user`, `--proposal`, `--email`, `--template`
+  - `--batch`, `--limit`, `--dry-run`, `--send`, `--skip-ai`
+- Vytvořena migrace `Version20260121161630`
+
+### Files Changed
+- `src/Enum/OfferStatus.php` - **nový soubor**
+- `src/Entity/Offer.php` - **nový soubor**
+- `src/Entity/UserEmailTemplate.php` - **nový soubor**
+- `src/Repository/OfferRepository.php` - **nový soubor**
+- `src/Repository/UserEmailTemplateRepository.php` - **nový soubor**
+- `src/Service/Offer/OfferContent.php` - **nový soubor**
+- `src/Service/Offer/RateLimitResult.php` - **nový soubor**
+- `src/Service/Offer/RateLimitChecker.php` - **nový soubor**
+- `src/Service/Offer/OfferGenerator.php` - **nový soubor**
+- `src/Service/Offer/OfferService.php` - **nový soubor**
+- `src/Controller/OfferController.php` - **nový soubor**
+- `src/Controller/TrackingController.php` - **nový soubor**
+- `src/Command/OfferGenerateCommand.php` - **nový soubor**
+- `migrations/Version20260121161630.php` - **nový soubor**
+
+### Blockers
+Žádné
+
+---
+
 ## 2026-01-21 (Proposal Generator Module)
 
 ### Focus

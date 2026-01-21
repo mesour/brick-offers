@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE neon PUBLIC "-//NEON//Neon plugin XML V0.0.1//EN" "../.idea/intellij-neon-pro/xmlSources/Neon.xsd">
+<neon vendor="project" version="1">
+    <project>
+        <parameters>
+            <parameter name="env.ENVIRONMENT" type="string"/>
+            <parameter name="env.POSTGRES_PORT" type="string"/>
+            <parameter name="env.POSTGRES_HOST" type="string"/>
+            <parameter name="env.POSTGRES_USER" type="string"/>
+            <parameter name="env.POSTGRES_PASSWORD" type="string"/>
+            <parameter name="env.POSTGRES_DB" type="string"/>
+            <parameter name="env.SENTRY_DSN" type="string"/>
+            <parameter name="env.CMS_TIER" type="string"/>
+        </parameters>
+    </project>
+</neon>

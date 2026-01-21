@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE latte PUBLIC "-//NEON//Neon plugin XML V0.0.1//EN" "../.idea/intellij-latte-pro/xmlSources/Latte.xsd">
+<latte vendor="project" version="1">
+    <assets>
+        <assetMappings>
+            <assetMapping name="assets" path="assets" />
+            <assetMapping name="images" path="img" />
+            <assetMapping name="scripts" path="js" />
+            <assetMapping name="styles" path="css" />
+        </assetMappings>
+    </assets>
+</latte>

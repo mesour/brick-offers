@@ -8,6 +8,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Email Module** - Email sending with abstract provider system and blacklist management
+  - `EmailStatus` enum (pending, sent, delivered, opened, clicked, bounced, complained, failed)
+  - `EmailBounceType` enum (hard, soft, complaint, unsubscribe)
+  - `EmailProvider` enum (smtp, ses, null for testing)
+  - `EmailLog` entity - delivery tracking with timestamps
+  - `EmailBlacklist` entity - dual blacklist:
+    - Global (user_id = NULL) for hard bounces and complaints
+    - Per-user (user_id set) for unsubscribes
+  - Provider abstraction with `EmailSenderInterface`:
+    - `SmtpEmailSender` - Symfony Mailer integration
+    - `SesEmailSender` - AWS SES integration
+    - `NullEmailSender` - testing/development sender
+  - `EmailBlacklistService` for blacklist management
+  - `EmailService` for orchestration (send, processBounce, processDelivery)
+  - SES Webhook controller for SNS notifications:
+    - `POST /api/webhook/ses` - bounce, complaint, delivery handling
+  - Enhanced unsubscribe endpoint with confirmation form
+  - CLI commands:
+    - `app:email:send` - send approved offers via email
+    - `app:email:cleanup` - retention policy cleanup (365 days)
+    - `app:email:blacklist` - add/remove/check/list blacklist entries
+  - Integration with OfferService.send() for actual email delivery
+  - Configuration:
+    - `config/packages/mailer.yaml` - Symfony Mailer
+    - Email provider tagging in services.yaml
+    - Environment variables: EMAIL_*, AWS_SES_*, MAILER_DSN
+
+- **Offer Module** - Email offer generation with template + AI personalization
+  - `OfferStatus` enum (draft, pending_approval, approved, rejected, sent, opened, clicked, responded, converted)
+  - `Offer` entity with:
+    - Workflow status tracking (draft → approval → sent → tracking)
+    - Per-user ownership with rate limiting
+    - Email tracking (open pixel, click tracking)
+    - AI personalization metadata
+    - Links to Lead, Proposal, Analysis, EmailTemplate
+  - `UserEmailTemplate` entity for per-user template customization:
+    - Override global EmailTemplate per user
+    - Industry-specific templates
+    - AI personalization prompt customization
+  - `OfferService` for orchestration:
+    - Create, generate, approve, reject, send workflow
+    - trackOpen(), trackClick(), markResponded(), markConverted()
+  - `OfferGenerator` for email content:
+    - Template hierarchy: UserEmailTemplate → EmailTemplate → default
+    - Variable substitution (lead, analysis, proposal data)
+    - AI personalization via ClaudeService
+    - Tracking pixel and unsubscribe link injection
+  - `RateLimitChecker` with per-user limits:
+    - Default: 10/hour, 50/day, 3/domain/day
+    - Configurable via User.settings['rate_limits']
+  - `app:offer:generate` command with options:
+    - `--lead`, `--user`, `--proposal`, `--email`, `--template`
+    - `--batch`, `--limit`, `--dry-run`, `--send`, `--skip-ai`
+  - REST API:
+    - API Platform CRUD on Offer entity with filters
+    - `POST /api/offers/generate` - create and generate offer
+    - `POST /api/offers/{id}/submit` - submit for approval
+    - `POST /api/offers/{id}/approve` - approve offer
+    - `POST /api/offers/{id}/reject` - reject with reason
+    - `POST /api/offers/{id}/send` - send email (rate limited)
+    - `GET /api/offers/{id}/preview` - preview email content
+    - `GET /api/offers/rate-limits` - current rate limit status
+    - `POST /api/offers/{id}/responded` - mark as responded
+    - `POST /api/offers/{id}/converted` - mark as converted
+  - Tracking endpoints:
+    - `GET /api/track/open/{token}` - tracking pixel (1x1 transparent GIF)
+    - `GET /api/track/click/{token}?url=` - click tracking with redirect
+    - `GET /unsubscribe/{token}` - unsubscribe endpoint
+
 - **Proposal Generator Module** - Abstraktní rozhraní pro generování návrhů podle odvětví
   - `ProposalGeneratorInterface` s tagged iterator pattern (`app.proposal_generator`)
   - Per-user ownership s možností recyklace AI-generovaných návrhů

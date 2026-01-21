@@ -53,7 +53,11 @@
       "Bash(bin/console doctrine:migrations:migrate:*)",
       "Bash(bin/console doctrine:schema:validate:*)",
       "Bash(bin/console app:proposal:generate:*)",
-      "Bash(bin/console lint:container:*)"
+      "Bash(bin/console lint:container:*)",
+      "Bash(bin/console cache:clear:*)",
+      "Bash(bin/console cache:warmup:*)",
+      "Bash(APP_ENV=test php:*)",
+      "Bash(PGPASSWORD=password psql:*)"
     ],
     "deny": [],
     "ask": []

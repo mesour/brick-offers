@@ -16,7 +16,7 @@ services:
     App\:
         resource: '../src/'
 
-    # Tag all discovery sources for DI collection
+    # Tag all services for DI collection
     _instanceof:
         App\Service\Discovery\DiscoverySourceInterface:
             tags: ['app.discovery_source']
@@ -28,6 +28,8 @@ services:
             tags: ['app.competitor_monitor']
         App\Service\Proposal\ProposalGeneratorInterface:
             tags: ['app.proposal_generator']
+        App\Service\Email\EmailSenderInterface:
+            tags: ['app.email_sender']
 
     # Configure Google Discovery Source with API credentials
     App\Service\Discovery\GoogleDiscoverySource:
@@ -98,3 +100,56 @@ services:
     App\Service\Proposal\DesignProposalGenerator:
         arguments:
             $promptsDir: '%kernel.project_dir%/templates/prompts'
+
+    # === Email Module ===
+
+    # Configure SMTP Email Sender
+    App\Service\Email\SmtpEmailSender:
+        arguments:
+            $defaultFromEmail: '%env(EMAIL_FROM)%'
+            $defaultFromName: '%env(EMAIL_FROM_NAME)%'
+
+    # Configure SES Email Sender
+    App\Service\Email\SesEmailSender:
+        arguments:
+            $awsRegion: '%env(AWS_SES_REGION)%'
+            $awsKey: '%env(AWS_SES_KEY)%'
+            $awsSecret: '%env(AWS_SES_SECRET)%'
+            $defaultFromEmail: '%env(EMAIL_FROM)%'
+            $defaultFromName: '%env(EMAIL_FROM_NAME)%'
+
+    # Configure File Email Sender (local testing - writes to var/emails/)
+    App\Service\Email\FileEmailSender:
+        arguments:
+            $emailDir: '%kernel.project_dir%/var/emails'
+
+    # Configure Email Service with tagged senders
+    App\Service\Email\EmailService:
+        arguments:
+            $senders: !tagged_iterator app.email_sender
+            $defaultProvider: '%env(EMAIL_DEFAULT_PROVIDER)%'
+            $defaultFromEmail: '%env(EMAIL_FROM)%'
+            $defaultFromName: '%env(EMAIL_FROM_NAME)%'
+
+# Test environment: make services public for testing
+when@test:
+    services:
+        _defaults:
+            autowire: true
+            autoconfigure: true
+
+        App\Service\Email\FileEmailSender:
+            public: true
+            arguments:
+                $emailDir: '%kernel.project_dir%/var/emails'
+
+        App\Service\Email\NullEmailSender:
+            public: true
+
+        App\Service\Email\EmailService:
+            public: true
+            arguments:
+                $senders: !tagged_iterator app.email_sender
+                $defaultProvider: '%env(EMAIL_DEFAULT_PROVIDER)%'
+                $defaultFromEmail: '%env(EMAIL_FROM)%'
+                $defaultFromName: '%env(EMAIL_FROM_NAME)%'
