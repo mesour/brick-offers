@@ -1,0 +1,29 @@
+{
+    "listeners": {
+        "*:80": {
+            "pass": "routes/main"
+        }
+    },
+    "routes": {
+        "main": [
+            {
+                "action": {
+                    "share": "/var/www/html/www/$uri",
+                    "fallback": {
+                        "pass": "applications/php-app"
+                    }
+                }
+            }
+        ]
+    },
+    "applications": {
+        "php-app": {
+            "type": "php",
+            "user": "www-data",
+            "group": "www-data",
+            "root": "/var/www/html",
+            "index": "index.php",
+            "script": "www/index.php"
+        }
+    }
+}

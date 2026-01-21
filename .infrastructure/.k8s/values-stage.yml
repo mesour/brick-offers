@@ -1,0 +1,6 @@
+restartAfterRedeploy: true
+containerPort: 9000
+fcgi: true
+fcgi_script_filename: "/var/www/html/www/index.php"
+envFromSecret: 'config'
+livenessProbePath: null

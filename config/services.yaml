@@ -1,0 +1,61 @@
+# This file is the entry point to configure your own services.
+# Files in the packages/ subdirectory configure your dependencies.
+
+# Put parameters here that don't need to change on each machine where the app is deployed
+# https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
+parameters:
+
+services:
+    # default configuration for services in *this* file
+    _defaults:
+        autowire: true      # Automatically injects dependencies in your services.
+        autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+
+    # makes classes in src/ available to be used as services
+    # this creates a service per class whose id is the fully-qualified class name
+    App\:
+        resource: '../src/'
+
+    # Tag all discovery sources for DI collection
+    _instanceof:
+        App\Service\Discovery\DiscoverySourceInterface:
+            tags: ['app.discovery_source']
+        App\Service\Analyzer\LeadAnalyzerInterface:
+            tags: ['app.lead_analyzer']
+
+    # Configure Google Discovery Source with API credentials
+    App\Service\Discovery\GoogleDiscoverySource:
+        arguments:
+            $apiKey: '%env(GOOGLE_SEARCH_API_KEY)%'
+            $searchEngineId: '%env(GOOGLE_SEARCH_ENGINE_ID)%'
+
+    # Configure Seznam Discovery Source with API key
+    App\Service\Discovery\SeznamDiscoverySource:
+        arguments:
+            $apiKey: '%env(SEZNAM_SEARCH_API_KEY)%'
+
+    # Configure Firmy.cz Discovery Source with custom HTTP client (HTTP/1.1)
+    App\Service\Discovery\FirmyCzDiscoverySource:
+        arguments:
+            $httpClient: '@firmy_cz.client'
+
+    # Configure Local Storage Service
+    App\Service\Storage\LocalStorageService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $publicUrlBase: '/storage'
+
+    # Bind StorageInterface to LocalStorageService (can be swapped to S3 later)
+    App\Service\Storage\StorageInterface: '@App\Service\Storage\LocalStorageService'
+
+    # Bind ScoringServiceInterface to WeightedScoringService
+    App\Service\Scoring\ScoringServiceInterface: '@App\Service\Scoring\WeightedScoringService'
+
+    # Configure BrowserlessClient with env variables
+    App\Service\Browser\BrowserlessClient:
+        arguments:
+            $browserlessUrl: '%env(BROWSERLESS_URL)%'
+            $timeout: '%env(int:BROWSERLESS_TIMEOUT)%'
+
+    # Bind BrowserInterface to BrowserlessClient
+    App\Service\Browser\BrowserInterface: '@App\Service\Browser\BrowserlessClient'

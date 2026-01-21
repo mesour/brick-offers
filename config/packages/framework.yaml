@@ -1,0 +1,35 @@
+# see https://symfony.com/doc/current/reference/configuration/framework.html
+framework:
+    secret: '%env(APP_SECRET)%'
+
+    # Note that the session will be started ONLY if you read or write from it.
+    session: true
+
+    #esi: true
+    #fragments: true
+
+    http_client:
+        scoped_clients:
+            # Firmy.cz has bot detection that returns malformed redirects
+            # Full browser-like headers are required to bypass it
+            firmy_cz.client:
+                base_uri: 'https://www.firmy.cz'
+                http_version: '1.1'
+                headers:
+                    User-Agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0'
+                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+                    Accept-Language: 'cs,sk;q=0.8,en-US;q=0.5,en;q=0.3'
+                    Accept-Encoding: 'gzip, deflate, br'
+                    DNT: '1'
+                    Connection: 'keep-alive'
+                    Upgrade-Insecure-Requests: '1'
+                    Sec-Fetch-Dest: 'document'
+                    Sec-Fetch-Mode: 'navigate'
+                    Sec-Fetch-Site: 'none'
+                    Sec-Fetch-User: '?1'
+
+when@test:
+    framework:
+        test: true
+        session:
+            storage_factory_id: session.storage.factory.mock_file

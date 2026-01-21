@@ -1,0 +1,70 @@
+services:
+    brickOffersDb:
+        image: postgres:15.6
+        container_name: brickOffersDb
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: offers-app
+        networks:
+            - brick-offers-network
+        #    ports:
+        #      - "5432:5432"
+        volumes:
+            - brick_offers_db_data:/var/lib/postgresql/data
+
+    adminer:
+        image: adminer:latest
+        restart: always
+        environment:
+            ADMINER_DEFAULT_DB_DRIVER: pgsql
+            ADMINER_DEFAULT_DB_HOST: brickOffersDb
+            ADMINER_DESIGN: nette
+        networks:
+            - brick-offers-network
+        depends_on:
+            - brickOffersDb
+        ports:
+            - "7279:8080"
+
+    php:
+        build:
+            context: .
+            dockerfile: .infrastructure/docker/php/Dockerfile
+            target: build-local
+        volumes:
+            - ./:/var/www/html
+        env_file: .env
+        ports:
+            - "50570:9003"
+            - "7270:80"
+        environment:
+            XDEBUG_SESSION: "1"
+            XDEBUG_MODE: "debug"
+            XDEBUG_CONFIG: "client_host=host.docker.internal"
+            PHP_IDE_CONFIG: "serverName=MyServer"
+        depends_on:
+            - brickOffersDb
+        networks:
+            - brick-offers-network
+
+    chromium:
+        image: browserless/chrome:latest
+        container_name: chromium
+        environment:
+            CONNECTION_TIMEOUT: 60000
+            MAX_CONCURRENT_SESSIONS: 10
+            PREBOOT_CHROME: "true"
+            DEMO_MODE: "false"
+        ports:
+            - "7290:3000"
+        networks:
+            - brick-offers-network
+        restart: unless-stopped
+
+volumes:
+    brick_offers_db_data:
+
+networks:
+    brick-offers-network:
+        driver: bridge
