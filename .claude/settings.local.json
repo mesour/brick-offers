@@ -57,7 +57,9 @@
       "Bash(bin/console cache:clear:*)",
       "Bash(bin/console cache:warmup:*)",
       "Bash(APP_ENV=test php:*)",
-      "Bash(PGPASSWORD=password psql:*)"
+      "Bash(PGPASSWORD=password psql:*)",
+      "Bash(ls:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

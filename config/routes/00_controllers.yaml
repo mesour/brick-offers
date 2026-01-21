@@ -1,0 +1,9 @@
+# Custom controller routes - loaded before API Platform
+# This ensures custom routes like /api/proposals/estimate take precedence
+# over API Platform's catch-all /api/proposals/{id} pattern
+
+controllers:
+    resource:
+        path: ../../src/Controller/
+        namespace: App\Controller
+    type: attribute

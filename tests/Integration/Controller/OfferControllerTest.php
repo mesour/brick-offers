@@ -239,36 +239,58 @@ final class OfferControllerTest extends ApiTestCase
     }
 
     // ==================== Rate Limits Endpoint Tests ====================
-    // Note: These tests are skipped because the custom route is being intercepted
-    // by API Platform. This is a routing priority issue that needs to be fixed
-    // in the application configuration, not in the tests.
 
     #[Test]
     public function rateLimits_missingUserCode_returnsBadRequest(): void
     {
-        // Skip: Route conflicts with API Platform
-        self::markTestSkipped('Rate limits route is intercepted by API Platform - needs routing priority fix');
+        $response = $this->apiGet('/api/offers/rate-limits');
+
+        $this->assertResponseStatusCode(Response::HTTP_BAD_REQUEST, $response);
+        $data = $this->getJsonResponse($response);
+        self::assertSame('userCode query parameter is required', $data['error']);
     }
 
     #[Test]
     public function rateLimits_userNotFound_returnsNotFound(): void
     {
-        // Skip: Route conflicts with API Platform
-        self::markTestSkipped('Rate limits route is intercepted by API Platform - needs routing priority fix');
+        $response = $this->apiGet('/api/offers/rate-limits?userCode=non-existent');
+
+        $this->assertResponseStatusCode(Response::HTTP_NOT_FOUND, $response);
+        $data = $this->getJsonResponse($response);
+        self::assertSame('User not found', $data['error']);
     }
 
     #[Test]
     public function rateLimits_validUser_returnsLimits(): void
     {
-        // Skip: Route conflicts with API Platform
-        self::markTestSkipped('Rate limits route is intercepted by API Platform - needs routing priority fix');
+        $user = $this->createUser('ratelimit-user-' . uniqid());
+
+        $response = $this->apiGet('/api/offers/rate-limits?userCode=' . $user->getCode());
+
+        $this->assertApiResponseIsSuccessful($response);
+        $data = $this->getJsonResponse($response);
+
+        self::assertSame($user->getCode(), $data['user']);
+        self::assertArrayHasKey('limits', $data);
+        self::assertArrayHasKey('usage', $data);
+        self::assertArrayHasKey('remaining', $data);
     }
 
     #[Test]
     public function rateLimits_withDomain_includesDomainLimits(): void
     {
-        // Skip: Route conflicts with API Platform
-        self::markTestSkipped('Rate limits route is intercepted by API Platform - needs routing priority fix');
+        $user = $this->createUser('ratelimit-user-' . uniqid());
+        $domain = 'example-' . uniqid() . '.com';
+
+        $response = $this->apiGet('/api/offers/rate-limits?userCode=' . $user->getCode() . '&domain=' . $domain);
+
+        $this->assertApiResponseIsSuccessful($response);
+        $data = $this->getJsonResponse($response);
+
+        self::assertSame($user->getCode(), $data['user']);
+        self::assertSame($domain, $data['domain']);
+        self::assertArrayHasKey('limits', $data);
+        self::assertArrayHasKey('usage', $data);
     }
 
     // ==================== Responded Endpoint Tests ====================

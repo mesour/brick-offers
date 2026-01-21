@@ -9,6 +9,7 @@ use App\Enum\LeadSource;
 use App\Enum\LeadStatus;
 use App\Repository\AffiliateRepository;
 use App\Repository\LeadRepository;
+use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,6 +24,7 @@ class LeadImportController extends AbstractController
     public function __construct(
         private readonly LeadRepository $leadRepository,
         private readonly AffiliateRepository $affiliateRepository,
+        private readonly UserRepository $userRepository,
         private readonly EntityManagerInterface $entityManager,
     ) {}
 
@@ -43,6 +45,21 @@ class LeadImportController extends AbstractController
             return $this->json([
                 'error' => 'urls array is required and must not be empty',
             ], Response::HTTP_BAD_REQUEST);
+        }
+
+        // User is required
+        $userCode = $data['userCode'] ?? null;
+        if ($userCode === null) {
+            return $this->json([
+                'error' => 'userCode is required',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $user = $this->userRepository->findOneBy(['code' => $userCode]);
+        if ($user === null) {
+            return $this->json([
+                'error' => 'User not found',
+            ], Response::HTTP_NOT_FOUND);
         }
 
         // Optional parameters
@@ -110,6 +127,7 @@ class LeadImportController extends AbstractController
 
             // Create lead
             $lead = new Lead();
+            $lead->setUser($user);
             $lead->setUrl($url);
             $lead->setDomain($domain);
             $lead->setSource($source);
