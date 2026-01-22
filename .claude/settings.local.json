@@ -62,7 +62,10 @@
       "Bash(xargs:*)",
       "Bash(bin/console debug:messenger:*)",
       "Bash(bin/console debug:config:*)",
-      "Bash(./vendor/bin/phpunit:*)"
+      "Bash(./vendor/bin/phpunit:*)",
+      "Bash(APP_SECRET=dev_secret_change_in_production_abc123xyz php bin/console doctrine:migrations:diff:*)",
+      "Bash(APP_SECRET=dev_secret php bin/console:*)",
+      "WebFetch(domain:host.docker.internal)"
     ],
     "deny": [],
     "ask": []

@@ -18,6 +18,8 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
+use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -26,6 +28,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[ORM\UniqueConstraint(name: 'users_code_unique', columns: ['code'])]
 #[ORM\UniqueConstraint(name: 'users_email_unique', columns: ['email'])]
 #[ORM\Index(name: 'users_name_idx', columns: ['name'])]
+#[ORM\Index(name: 'users_admin_account_idx', columns: ['admin_account_id'])]
 #[ORM\HasLifecycleCallbacks]
 #[ApiResource(
     operations: [
@@ -42,8 +45,86 @@ use Symfony\Component\Validator\Constraints as Assert;
     'email' => 'exact',
     'name' => 'partial',
 ])]
-class User
+class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
+    public const ROLE_ADMIN = 'ROLE_ADMIN';
+    public const ROLE_USER = 'ROLE_USER';
+
+    // Permission scopes
+    public const PERMISSION_LEADS_READ = 'leads:read';
+    public const PERMISSION_LEADS_WRITE = 'leads:write';
+    public const PERMISSION_LEADS_DELETE = 'leads:delete';
+    public const PERMISSION_LEADS_ANALYZE = 'leads:analyze';
+    public const PERMISSION_OFFERS_READ = 'offers:read';
+    public const PERMISSION_OFFERS_WRITE = 'offers:write';
+    public const PERMISSION_OFFERS_APPROVE = 'offers:approve';
+    public const PERMISSION_OFFERS_SEND = 'offers:send';
+    public const PERMISSION_PROPOSALS_READ = 'proposals:read';
+    public const PERMISSION_PROPOSALS_APPROVE = 'proposals:approve';
+    public const PERMISSION_PROPOSALS_REJECT = 'proposals:reject';
+    public const PERMISSION_ANALYSIS_READ = 'analysis:read';
+    public const PERMISSION_ANALYSIS_TRIGGER = 'analysis:trigger';
+    public const PERMISSION_COMPETITORS_READ = 'competitors:read';
+    public const PERMISSION_COMPETITORS_MANAGE = 'competitors:manage';
+    public const PERMISSION_STATS_READ = 'stats:read';
+    public const PERMISSION_SETTINGS_READ = 'settings:read';
+    public const PERMISSION_SETTINGS_WRITE = 'settings:write';
+    public const PERMISSION_USERS_READ = 'users:read';
+    public const PERMISSION_USERS_MANAGE = 'users:manage';
+
+    // Permission templates
+    public const TEMPLATE_MANAGER = 'manager';
+    public const TEMPLATE_APPROVER = 'approver';
+    public const TEMPLATE_ANALYST = 'analyst';
+    public const TEMPLATE_FULL = 'full';
+
+    /** @var array<string, array<string>> */
+    public const PERMISSION_TEMPLATES = [
+        self::TEMPLATE_MANAGER => [
+            self::PERMISSION_LEADS_READ,
+            self::PERMISSION_OFFERS_READ,
+            self::PERMISSION_STATS_READ,
+            self::PERMISSION_COMPETITORS_READ,
+        ],
+        self::TEMPLATE_APPROVER => [
+            self::PERMISSION_LEADS_READ,
+            self::PERMISSION_OFFERS_READ,
+            self::PERMISSION_OFFERS_APPROVE,
+            self::PERMISSION_OFFERS_SEND,
+            self::PERMISSION_PROPOSALS_READ,
+            self::PERMISSION_PROPOSALS_APPROVE,
+            self::PERMISSION_PROPOSALS_REJECT,
+        ],
+        self::TEMPLATE_ANALYST => [
+            self::PERMISSION_LEADS_READ,
+            self::PERMISSION_LEADS_WRITE,
+            self::PERMISSION_ANALYSIS_READ,
+            self::PERMISSION_ANALYSIS_TRIGGER,
+            self::PERMISSION_STATS_READ,
+        ],
+        self::TEMPLATE_FULL => [
+            self::PERMISSION_LEADS_READ,
+            self::PERMISSION_LEADS_WRITE,
+            self::PERMISSION_LEADS_DELETE,
+            self::PERMISSION_LEADS_ANALYZE,
+            self::PERMISSION_OFFERS_READ,
+            self::PERMISSION_OFFERS_WRITE,
+            self::PERMISSION_OFFERS_APPROVE,
+            self::PERMISSION_OFFERS_SEND,
+            self::PERMISSION_PROPOSALS_READ,
+            self::PERMISSION_PROPOSALS_APPROVE,
+            self::PERMISSION_PROPOSALS_REJECT,
+            self::PERMISSION_ANALYSIS_READ,
+            self::PERMISSION_ANALYSIS_TRIGGER,
+            self::PERMISSION_COMPETITORS_READ,
+            self::PERMISSION_COMPETITORS_MANAGE,
+            self::PERMISSION_STATS_READ,
+            self::PERMISSION_SETTINGS_READ,
+            self::PERMISSION_SETTINGS_WRITE,
+            self::PERMISSION_USERS_READ,
+        ],
+    ];
+
     #[ORM\Id]
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     #[ORM\GeneratedValue(strategy: 'CUSTOM')]
@@ -64,6 +145,45 @@ class User
     #[ORM\Column(length: 255, unique: true, nullable: true)]
     #[Assert\Email]
     private ?string $email = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $password = null;
+
+    /** @var array<string> */
+    #[ORM\Column(type: Types::JSON)]
+    private array $roles = [self::ROLE_USER];
+
+    /**
+     * Admin account for sub-users. NULL = this is an admin account.
+     */
+    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'subAccounts')]
+    #[ORM\JoinColumn(name: 'admin_account_id', nullable: true, onDelete: 'CASCADE')]
+    private ?User $adminAccount = null;
+
+    /**
+     * Sub-accounts managed by this admin.
+     *
+     * @var Collection<int, User>
+     */
+    #[ORM\OneToMany(targetEntity: User::class, mappedBy: 'adminAccount', cascade: ['persist'])]
+    private Collection $subAccounts;
+
+    /**
+     * Granular permissions for non-admin users.
+     *
+     * @var array<string>
+     */
+    #[ORM\Column(type: Types::JSON)]
+    private array $permissions = [];
+
+    /**
+     * System limits set by CLI for tenant (admin only).
+     * Example: {"maxLeadsPerMonth": 1000, "maxEmailsPerDay": 100}
+     *
+     * @var array<string, mixed>
+     */
+    #[ORM\Column(type: Types::JSON)]
+    private array $limits = [];
 
     #[ORM\Column(type: Types::BOOLEAN, options: ['default' => true])]
     private bool $active = true;
@@ -124,6 +244,12 @@ class User
         $this->demandSignalSubscriptions = new ArrayCollection();
         $this->marketWatchFilters = new ArrayCollection();
         $this->emailTemplates = new ArrayCollection();
+        $this->subAccounts = new ArrayCollection();
+    }
+
+    public function __toString(): string
+    {
+        return $this->name;
     }
 
     public function getId(): ?Uuid
@@ -163,6 +289,249 @@ class User
     public function setEmail(?string $email): static
     {
         $this->email = $email;
+
+        return $this;
+    }
+
+    // UserInterface implementation
+
+    public function getUserIdentifier(): string
+    {
+        return $this->email ?? $this->code;
+    }
+
+    public function getPassword(): ?string
+    {
+        return $this->password;
+    }
+
+    public function setPassword(?string $password): static
+    {
+        $this->password = $password;
+
+        return $this;
+    }
+
+    /** @return array<string> */
+    public function getRoles(): array
+    {
+        $roles = $this->roles;
+        // Guarantee every user at least has ROLE_USER
+        $roles[] = self::ROLE_USER;
+
+        return array_unique($roles);
+    }
+
+    /** @param array<string> $roles */
+    public function setRoles(array $roles): static
+    {
+        $this->roles = $roles;
+
+        return $this;
+    }
+
+    public function eraseCredentials(): void
+    {
+        // If you store any temporary, sensitive data on the user, clear it here
+    }
+
+    // Admin/Sub-account methods
+
+    public function getAdminAccount(): ?User
+    {
+        return $this->adminAccount;
+    }
+
+    public function setAdminAccount(?User $adminAccount): static
+    {
+        $this->adminAccount = $adminAccount;
+
+        return $this;
+    }
+
+    /** @return Collection<int, User> */
+    public function getSubAccounts(): Collection
+    {
+        return $this->subAccounts;
+    }
+
+    public function addSubAccount(User $subAccount): static
+    {
+        if (!$this->subAccounts->contains($subAccount)) {
+            $this->subAccounts->add($subAccount);
+            $subAccount->setAdminAccount($this);
+        }
+
+        return $this;
+    }
+
+    public function removeSubAccount(User $subAccount): static
+    {
+        if ($this->subAccounts->removeElement($subAccount)) {
+            if ($subAccount->getAdminAccount() === $this) {
+                $subAccount->setAdminAccount(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Check if this user is a tenant admin (no parent admin account and has ROLE_ADMIN).
+     */
+    public function isAdmin(): bool
+    {
+        return $this->adminAccount === null && in_array(self::ROLE_ADMIN, $this->roles, true);
+    }
+
+    /**
+     * Check if this user is a sub-user (has parent admin account).
+     */
+    public function isSubUser(): bool
+    {
+        return $this->adminAccount !== null;
+    }
+
+    /**
+     * Get the admin account for this user (returns self if already admin).
+     */
+    public function getAdminOrSelf(): User
+    {
+        return $this->adminAccount ?? $this;
+    }
+
+    /**
+     * Get all users in the same tenant (admin + all sub-accounts).
+     *
+     * @return array<User>
+     */
+    public function getTenantUsers(): array
+    {
+        $admin = $this->getAdminOrSelf();
+        $users = [$admin];
+
+        foreach ($admin->getSubAccounts() as $subAccount) {
+            $users[] = $subAccount;
+        }
+
+        return $users;
+    }
+
+    // Permissions
+
+    /** @return array<string> */
+    public function getPermissions(): array
+    {
+        return $this->permissions;
+    }
+
+    /** @param array<string> $permissions */
+    public function setPermissions(array $permissions): static
+    {
+        $this->permissions = $permissions;
+
+        return $this;
+    }
+
+    /**
+     * Apply a permission template.
+     */
+    public function applyPermissionTemplate(string $template): static
+    {
+        if (!isset(self::PERMISSION_TEMPLATES[$template])) {
+            throw new \InvalidArgumentException(sprintf('Unknown permission template: %s', $template));
+        }
+
+        $this->permissions = self::PERMISSION_TEMPLATES[$template];
+
+        return $this;
+    }
+
+    /**
+     * Check if user has a specific permission.
+     * Admins have all permissions, sub-users check the permissions array.
+     */
+    public function hasPermission(string $permission): bool
+    {
+        // Admins have all permissions
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        return in_array($permission, $this->permissions, true);
+    }
+
+    /**
+     * Check if user has any of the given permissions.
+     *
+     * @param array<string> $permissions
+     */
+    public function hasAnyPermission(array $permissions): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        foreach ($permissions as $permission) {
+            if (in_array($permission, $this->permissions, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if user has all of the given permissions.
+     *
+     * @param array<string> $permissions
+     */
+    public function hasAllPermissions(array $permissions): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        foreach ($permissions as $permission) {
+            if (!in_array($permission, $this->permissions, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Limits (for admin accounts only)
+
+    /** @return array<string, mixed> */
+    public function getLimits(): array
+    {
+        // Sub-users inherit limits from admin
+        if ($this->adminAccount !== null) {
+            return $this->adminAccount->getLimits();
+        }
+
+        return $this->limits;
+    }
+
+    /** @param array<string, mixed> $limits */
+    public function setLimits(array $limits): static
+    {
+        $this->limits = $limits;
+
+        return $this;
+    }
+
+    public function getLimit(string $key, mixed $default = null): mixed
+    {
+        $limits = $this->getLimits();
+
+        return $limits[$key] ?? $default;
+    }
+
+    public function setLimit(string $key, mixed $value): static
+    {
+        $this->limits[$key] = $value;
 
         return $this;
     }

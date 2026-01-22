@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Admin Module** - Complete EasyAdmin dashboard for entity management
+  - EasyAdmin 4.x integration with custom dashboard
+  - User authentication with form login and remember-me
+  - Multi-tenant data isolation (ROLE_ADMIN sees tenant, ROLE_USER sees own data)
+  - Granular permission system with 20+ permission scopes
+  - Permission templates: manager, approver, analyst, full
+  - Admin account hierarchy (admin → sub-users)
+  - CRUD controllers for all entities:
+    - Lead Pipeline: Lead, Company, Analysis, AnalysisResult, AnalysisSnapshot
+    - Workflow: Proposal, Offer with approve/reject/send actions
+    - Email: EmailTemplate, UserEmailTemplate, EmailLog, EmailBlacklist
+    - Monitoring: MonitoredDomain, Subscriptions, CompetitorSnapshot, DemandSignal
+    - Config: User, UserAnalyzerConfig, UserCompanyNote, IndustryBenchmark
+  - CLI commands for user management:
+    - `app:user:create` - create admin or sub-user accounts
+    - `app:user:set-limits` - set tenant limits (CLI only)
+  - User entity extended with:
+    - password, roles, permissions fields
+    - adminAccount self-reference for tenant hierarchy
+    - limits JSON for tenant-level quotas
+  - Security configuration:
+    - Admin firewall with form login
+    - Role hierarchy (ROLE_ADMIN includes ROLE_USER)
+    - Access control for /admin routes
+  - Custom templates: login page, dashboard, score field
+
 - **Email Module** - Email sending with abstract provider system and blacklist management
   - `EmailStatus` enum (pending, sent, delivered, opened, clicked, bounced, complained, failed)
   - `EmailBounceType` enum (hard, soft, complaint, unsubscribe)

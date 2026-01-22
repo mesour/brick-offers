@@ -1393,6 +1393,118 @@ curl -X POST http://localhost:7270/api/users \
 
 ---
 
+## Admin Module (EasyAdmin)
+
+Kompletní administrační rozhraní pro správu všech entit s multi-tenant data isolation a role-based access control.
+
+### Přístup
+
+```
+URL: /admin
+Login: email + heslo
+```
+
+### Architektura účtů
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ SYSTEM LEVEL (CLI only)                                 │
+│ - Vytváření tenant účtů (ROLE_ADMIN)                    │
+│ - Nastavení limitů/kvót per tenant                      │
+└─────────────────────────────────────────────────────────┘
+                            │
+┌─────────────────────────────────────────────────────────┐
+│ TENANT LEVEL                                            │
+│ ┌─────────────────────────────────────────────────────┐ │
+│ │ ADMIN (1) - majitel účtu                            │ │
+│ │ - Plný přístup v rámci tenant limitů                │ │
+│ │ - Správa sub-userů + přiřazování permissions        │ │
+│ │ - Vidí data svoje + všech sub-userů                 │ │
+│ └─────────────────────────────────────────────────────┘ │
+│ ┌─────────────────────────────────────────────────────┐ │
+│ │ USER (n) - zaměstnanci s granulárními permissions   │ │
+│ │ - Oprávnění nastavena ADMINem                       │ │
+│ │ - Vidí pouze svoje data                             │ │
+│ └─────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+### CLI příkazy pro správu uživatelů
+
+```bash
+# Vytvořit admin účet (tenant owner)
+bin/console app:user:create admin@example.com password123 --admin
+
+# Vytvořit sub-účet s permission template
+bin/console app:user:create employee@example.com password123 \
+    --admin-code=admin --template=analyst
+
+# Vytvořit sub-účet s custom permissions
+bin/console app:user:create employee@example.com password123 \
+    --admin-code=admin \
+    --permissions=leads:read,leads:write,analysis:read
+
+# Nastavit limity pro admin účet (CLI only)
+bin/console app:user:set-limits admin \
+    '{"maxLeadsPerMonth": 1000, "maxEmailsPerDay": 100, "maxUsers": 10}'
+```
+
+### Permission Templates
+
+| Template | Permissions | Use case |
+|----------|-------------|----------|
+| `manager` | leads:read, offers:read, stats:read, competitors:read | Přehled bez editace |
+| `approver` | leads:read, offers:read+approve+send, proposals:read+approve | Schvalování workflow |
+| `analyst` | leads:read+write, analysis:read+trigger, stats:read | Analýza leadů |
+| `full` | všechny scopes (kromě users:manage) | Skoro admin |
+
+### Permission Scopes
+
+| Scope | Actions | Popis |
+|-------|---------|-------|
+| `leads` | read, write, delete, analyze | Správa leadů |
+| `offers` | read, write, approve, send | Workflow nabídek |
+| `proposals` | read, approve, reject | Návrhy |
+| `analysis` | read, trigger | Výsledky analýz |
+| `competitors` | read, manage | Monitoring konkurence |
+| `stats` | read | Statistiky, dashboardy |
+| `settings` | read, write | Nastavení |
+| `users` | read, manage | Správa uživatelů (pouze ADMIN) |
+
+### System Limits (per tenant)
+
+Limity se nastavují pouze přes CLI:
+
+```json
+{
+  "maxLeadsPerMonth": 1000,
+  "maxAnalysesPerDay": 50,
+  "maxEmailsPerDay": 100,
+  "maxUsers": 10,
+  "maxAiTokensPerMonth": 100000,
+  "allowedIndustries": ["webdesign", "eshop"],
+  "allowedSources": ["google", "firmy_cz"]
+}
+```
+
+### Multi-tenancy Data Isolation
+
+- **ADMIN** vidí data svoje + všech sub-userů (celý tenant)
+- **USER** vidí pouze svoje data
+- Automatické filtrování v každém CRUD controlleru
+
+### Dostupné CRUD Controllers
+
+| Oblast | Entity |
+|--------|--------|
+| **Lead Pipeline** | Lead, Company, Analysis, AnalysisResult, AnalysisSnapshot |
+| **Workflow** | Proposal, Offer (s approve/reject/send akcemi) |
+| **Email** | EmailTemplate, UserEmailTemplate, EmailLog, EmailBlacklist |
+| **Monitoring** | MonitoredDomain, Subscriptions, CompetitorSnapshot, DemandSignal |
+| **Config** | User, UserAnalyzerConfig, UserCompanyNote, IndustryBenchmark |
+
+---
+
 ## Company & ARES Integration
 
 Systém podporuje propojení leadů s firmami pomocí IČO a automatické doplnění firemních údajů z registru ARES.

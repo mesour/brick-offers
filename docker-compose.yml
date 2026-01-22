@@ -37,7 +37,7 @@ services:
         env_file: .env
         ports:
             - "50570:9003"
-            - "7270:80"
+            - "7270:8080"
         environment:
             XDEBUG_SESSION: "1"
             XDEBUG_MODE: "debug"

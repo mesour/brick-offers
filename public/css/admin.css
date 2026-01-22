@@ -1,0 +1,55 @@
+/* Custom Admin Styles */
+
+.card {
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.badge-status {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.375rem;
+}
+
+/* Status colors */
+.badge-new { background-color: #6c757d; color: white; }
+.badge-queued { background-color: #17a2b8; color: white; }
+.badge-analyzing { background-color: #ffc107; color: black; }
+.badge-analyzed { background-color: #28a745; color: white; }
+.badge-approved { background-color: #007bff; color: white; }
+.badge-sent { background-color: #6f42c1; color: white; }
+.badge-responded { background-color: #fd7e14; color: white; }
+.badge-converted { background-color: #20c997; color: white; }
+.badge-rejected { background-color: #dc3545; color: white; }
+
+/* Improve table readability */
+.table td {
+    vertical-align: middle;
+}
+
+/* Score indicators */
+.score-high { color: #28a745; font-weight: 600; }
+.score-medium { color: #ffc107; font-weight: 600; }
+.score-low { color: #dc3545; font-weight: 600; }
+
+/* JSON field display */
+.json-preview {
+    font-family: monospace;
+    font-size: 0.875rem;
+    background: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    max-height: 100px;
+    overflow: auto;
+}
+
+/* Action buttons */
+.action-approve { color: #28a745; }
+.action-reject { color: #dc3545; }
+.action-send { color: #007bff; }
+.action-analyze { color: #17a2b8; }

@@ -1,5 +1,77 @@
 # Session Log
 
+## 2026-01-22 (Admin Module)
+
+### Focus
+Implementace kompletního EasyAdmin dashboardu pro správu všech entit s multi-tenancy a role-based access control
+
+### Completed
+- Nainstalován EasyAdmin bundle (v4.27)
+- Rozšířena User entita o autentizační pole:
+  - `password` - nullable pro API-only users
+  - `roles` - JSON array (ROLE_ADMIN, ROLE_USER)
+  - `adminAccount` - self-reference pro sub-účty
+  - `permissions` - granulární oprávnění
+  - `limits` - systémové limity (nastavuje CLI)
+  - Implementován `UserInterface` a `PasswordAuthenticatedUserInterface`
+- Vytvořen permission system:
+  - 20+ permission scopes (leads:read, offers:approve, atd.)
+  - 4 permission templates (manager, approver, analyst, full)
+  - Helper metody: `hasPermission()`, `isAdmin()`, `getAdminOrSelf()`
+- Konfigurován Symfony Security:
+  - Admin firewall s form_login
+  - User provider z entity
+  - Remember-me funkcionalita
+- Vytvořen DashboardController s menu pro všechny entity
+- Vytvořen SecurityController (login/logout)
+- Vytvořen AbstractTenantCrudController pro multi-tenancy
+- Vytvořeno 21 CRUD controllerů:
+  - Lead Pipeline: Lead, Company, Analysis, AnalysisResult, AnalysisSnapshot
+  - Workflow: Proposal, Offer (s approve/reject/send akcemi)
+  - Email: EmailTemplate, UserEmailTemplate, EmailLog, EmailBlacklist
+  - Monitoring: MonitoredDomain, Subscriptions, CompetitorSnapshot, DemandSignal
+  - Config: User, UserAnalyzerConfig, UserCompanyNote, IndustryBenchmark
+- Vytvořeny CLI příkazy:
+  - `app:user:create` - vytvoření admin nebo sub-user účtů
+  - `app:user:set-limits` - nastavení limitů pro tenanty
+- Vytvořeny templates:
+  - `admin/login.html.twig` - login stránka
+  - `admin/dashboard.html.twig` - homepage
+  - `admin/field/score.html.twig` - score badge
+- Vytvořena migrace `Version20260122165020`
+
+### Files Changed
+- `src/Entity/User.php` - přidána autentizace, role, permissions
+- `src/Controller/Admin/*.php` - **22 nových souborů**
+- `src/Command/UserCreateCommand.php` - **nový soubor**
+- `src/Command/UserSetLimitsCommand.php` - **nový soubor**
+- `config/packages/security.yaml` - security konfigurace
+- `templates/admin/*.html.twig` - **3 nové soubory**
+- `public/css/admin.css` - **nový soubor**
+- `migrations/Version20260122165020.php` - **nový soubor**
+- `.ai/history/admin-module.md` - **nový soubor**
+- `CHANGELOG.md` - přidán Admin Module entry
+
+### Blockers
+Žádné
+
+### Usage
+```bash
+# Spustit migraci
+bin/console doctrine:migrations:migrate
+
+# Vytvořit admin účet
+bin/console app:user:create admin@example.com password123 --admin
+
+# Vytvořit sub-účet
+bin/console app:user:create employee@example.com password123 --admin-code=admin --template=analyst
+
+# Přístup
+http://localhost:7270/admin
+```
+
+---
+
 ## 2026-01-21 (Email Module)
 
 ### Focus

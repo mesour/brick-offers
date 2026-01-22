@@ -1,0 +1,53 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block main %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fa fa-home"></i> Vítejte v administraci Web Analyzer
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Vyberte sekci z menu vlevo pro správu dat.</p>
+
+                <div class="row mt-4">
+                    <div class="col-md-4 mb-3">
+                        <div class="card bg-primary text-white h-100">
+                            <div class="card-body">
+                                <h5 class="card-title"><i class="fa fa-user-plus"></i> Lead Pipeline</h5>
+                                <p class="card-text">Správa leadů, firem a analýz webových stránek.</p>
+                                <a href="{{ ea_url().setController('App\\\\Controller\\\\Admin\\\\LeadCrudController') }}"
+                                   class="btn btn-light btn-sm">Zobrazit leady</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card bg-success text-white h-100">
+                            <div class="card-body">
+                                <h5 class="card-title"><i class="fa fa-envelope"></i> Workflow</h5>
+                                <p class="card-text">Návrhy a nabídky pro oslovení potenciálních klientů.</p>
+                                <a href="{{ ea_url().setController('App\\\\Controller\\\\Admin\\\\OfferCrudController') }}"
+                                   class="btn btn-light btn-sm">Zobrazit nabídky</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card bg-info text-white h-100">
+                            <div class="card-body">
+                                <h5 class="card-title"><i class="fa fa-eye"></i> Monitoring</h5>
+                                <p class="card-text">Sledování konkurence a signálů z trhu.</p>
+                                <a href="{{ ea_url().setController('App\\\\Controller\\\\Admin\\\\MonitoredDomainCrudController') }}"
+                                   class="btn btn-light btn-sm">Zobrazit monitoring</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

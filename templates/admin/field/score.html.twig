@@ -1,0 +1,14 @@
+{# templates/admin/field/score.html.twig #}
+{% set score = field.value %}
+
+{% if score is not null %}
+    {% if score >= 0 %}
+        <span class="badge bg-success">{{ score }}</span>
+    {% elseif score >= -20 %}
+        <span class="badge bg-warning text-dark">{{ score }}</span>
+    {% else %}
+        <span class="badge bg-danger">{{ score }}</span>
+    {% endif %}
+{% else %}
+    <span class="text-muted">-</span>
+{% endif %}
