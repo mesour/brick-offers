@@ -11,6 +11,7 @@ use App\Enum\AnalysisStatus;
 use App\Enum\Industry;
 use App\Enum\IssueCategory;
 use App\Enum\LeadStatus;
+use App\Message\AnalyzeLeadMessage;
 use App\Repository\AnalysisRepository;
 use App\Repository\LeadRepository;
 use App\Service\Analyzer\Issue;
@@ -24,6 +25,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
 
 #[AsCommand(
@@ -45,6 +47,7 @@ class LeadAnalyzeCommand extends Command
         private readonly AnalysisRepository $analysisRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly ScoringServiceInterface $scoringService,
+        private readonly MessageBusInterface $messageBus,
     ) {
         parent::__construct();
 
@@ -106,6 +109,12 @@ class LeadAnalyzeCommand extends Command
                 'i',
                 InputOption::VALUE_REQUIRED,
                 'Industry type for analysis (webdesign, eshop, real_estate, automobile, restaurant, medical, legal, finance, education, other)'
+            )
+            ->addOption(
+                'async',
+                null,
+                InputOption::VALUE_NONE,
+                'Dispatch analysis jobs to the message queue instead of processing synchronously'
             );
     }
 
@@ -121,6 +130,7 @@ class LeadAnalyzeCommand extends Command
         $reanalyze = $input->getOption('reanalyze');
         $verboseIssues = $input->getOption('verbose-issues');
         $industryFilter = $input->getOption('industry');
+        $async = $input->getOption('async');
 
         // Parse industry option
         $industry = null;
@@ -134,6 +144,11 @@ class LeadAnalyzeCommand extends Command
 
                 return Command::FAILURE;
             }
+        }
+
+        // Async mode - dispatch messages to queue
+        if ($async) {
+            return $this->executeAsync($io, $leadId, $limit, $offset, $reanalyze, $industryFilter, $dryRun);
         }
 
         $io->title('Lead Analysis');
@@ -269,6 +284,64 @@ class LeadAnalyzeCommand extends Command
 
         // Display statistics
         $this->displayStatistics($io, $stats);
+
+        return Command::SUCCESS;
+    }
+
+    private function executeAsync(
+        SymfonyStyle $io,
+        ?string $leadId,
+        int $limit,
+        int $offset,
+        bool $reanalyze,
+        ?string $industryFilter,
+        bool $dryRun,
+    ): int {
+        $io->title('Lead Analysis (Async Mode)');
+
+        // Get leads to analyze
+        $leads = $this->getLeadsToAnalyze($leadId, $limit, $offset, $reanalyze);
+
+        if (empty($leads)) {
+            $io->warning('No leads to analyze');
+
+            return Command::SUCCESS;
+        }
+
+        $io->text(sprintf('Found %d lead(s) to analyze', count($leads)));
+
+        if ($dryRun) {
+            $io->note('DRY RUN MODE - No messages will be dispatched');
+            foreach ($leads as $lead) {
+                $io->text(sprintf('  Would dispatch: %s (%s)', $lead->getDomain(), $lead->getId()?->toRfc4122()));
+            }
+
+            return Command::SUCCESS;
+        }
+
+        // Dispatch messages
+        $dispatched = 0;
+        foreach ($leads as $lead) {
+            $leadUuid = $lead->getId();
+            if ($leadUuid === null) {
+                continue;
+            }
+
+            $message = new AnalyzeLeadMessage(
+                leadId: $leadUuid,
+                reanalyze: $reanalyze,
+                industryFilter: $industryFilter,
+            );
+
+            $this->messageBus->dispatch($message);
+            $dispatched++;
+
+            if ($io->isVerbose()) {
+                $io->text(sprintf('Dispatched: %s (%s)', $lead->getDomain(), $leadUuid->toRfc4122()));
+            }
+        }
+
+        $io->success(sprintf('Dispatched %d analysis job(s) to the queue', $dispatched));
 
         return Command::SUCCESS;
     }

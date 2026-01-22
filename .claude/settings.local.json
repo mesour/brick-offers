@@ -59,7 +59,10 @@
       "Bash(APP_ENV=test php:*)",
       "Bash(PGPASSWORD=password psql:*)",
       "Bash(ls:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(bin/console debug:messenger:*)",
+      "Bash(bin/console debug:config:*)",
+      "Bash(./vendor/bin/phpunit:*)"
     ],
     "deny": [],
     "ask": []

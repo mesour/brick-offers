@@ -9,6 +9,7 @@ use App\Enum\LeadSource;
 use App\Enum\LeadStatus;
 use App\Enum\LeadType;
 use App\Entity\User;
+use App\Message\DiscoverLeadsMessage;
 use App\Repository\AffiliateRepository;
 use App\Repository\LeadRepository;
 use App\Repository\UserRepository;
@@ -27,6 +28,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
     name: 'app:lead:discover',
@@ -49,6 +51,7 @@ class LeadDiscoverCommand extends Command
         private readonly EntityManagerInterface $entityManager,
         private readonly PageDataExtractor $pageDataExtractor,
         private readonly CompanyService $companyService,
+        private readonly MessageBusInterface $messageBus,
     ) {
         parent::__construct();
 
@@ -139,6 +142,12 @@ class LeadDiscoverCommand extends Command
                 null,
                 InputOption::VALUE_REQUIRED,
                 'User code (required) - all discovered leads will belong to this user'
+            )
+            ->addOption(
+                'async',
+                null,
+                InputOption::VALUE_NONE,
+                'Dispatch discovery job to the message queue instead of processing synchronously'
             );
     }
 
@@ -269,10 +278,28 @@ class LeadDiscoverCommand extends Command
             }
         }
 
-        $io->title(sprintf('Lead Discovery - %s', $source->value));
+        $async = $input->getOption('async');
+
+        $io->title(sprintf('Lead Discovery - %s%s', $source->value, $async ? ' (Async Mode)' : ''));
 
         if ($dryRun) {
             $io->note('DRY RUN MODE - No changes will be saved');
+        }
+
+        // Async mode - dispatch message to queue
+        if ($async) {
+            return $this->dispatchAsync(
+                $io,
+                $source,
+                $discoveryInputs,
+                $user,
+                $limit,
+                $affiliateHash,
+                $priority,
+                $extractEnabled,
+                $linkCompany,
+                $dryRun,
+            );
         }
 
         // Discover leads
@@ -328,6 +355,67 @@ class LeadDiscoverCommand extends Command
             $savedCount = $this->saveLeads($io, $newResults, $source, $affiliate, $priority, $batchSize, $linkCompany, $user);
             $io->success(sprintf('Saved %d new leads', $savedCount));
         }
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * @param string[] $queries
+     */
+    private function dispatchAsync(
+        SymfonyStyle $io,
+        LeadSource $source,
+        array $queries,
+        User $user,
+        int $limit,
+        ?string $affiliateHash,
+        int $priority,
+        bool $extractData,
+        bool $linkCompany,
+        bool $dryRun,
+    ): int {
+        $userId = $user->getId();
+        if ($userId === null) {
+            $io->error('User ID is missing');
+
+            return Command::FAILURE;
+        }
+
+        $io->section('Dispatch Summary');
+        $io->table([], [
+            ['Source', $source->value],
+            ['Queries', count($queries) . ' query(s)'],
+            ['User', $user->getCode()],
+            ['Limit', $limit],
+            ['Priority', $priority],
+            ['Extract Data', $extractData ? 'Yes' : 'No'],
+            ['Link Company', $linkCompany ? 'Yes' : 'No'],
+        ]);
+
+        if ($dryRun) {
+            $io->note('DRY RUN MODE - No message will be dispatched');
+            $io->text('Queries:');
+            foreach ($queries as $query) {
+                $io->text(sprintf('  - %s', $query ?: '(empty)'));
+            }
+
+            return Command::SUCCESS;
+        }
+
+        $message = new DiscoverLeadsMessage(
+            source: $source->value,
+            queries: $queries,
+            userId: $userId,
+            limit: $limit,
+            affiliateHash: $affiliateHash,
+            priority: $priority,
+            extractData: $extractData,
+            linkCompany: $linkCompany,
+        );
+
+        $this->messageBus->dispatch($message);
+
+        $io->success(sprintf('Dispatched discovery job to the queue (%d queries, source: %s)', count($queries), $source->value));
 
         return Command::SUCCESS;
     }

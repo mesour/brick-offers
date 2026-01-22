@@ -71,6 +71,52 @@ services:
             MP_SMTP_AUTH_ACCEPT_ANY: 1
             MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
+    # Messenger Workers (uncomment to run workers in Docker)
+    # messenger-high:
+    #     build:
+    #         context: .
+    #         dockerfile: .infrastructure/docker/php/Dockerfile
+    #         target: build-local
+    #     volumes:
+    #         - ./:/var/www/html
+    #     env_file: .env
+    #     command: php bin/console messenger:consume high_priority --time-limit=3600 --memory-limit=256M -vv
+    #     depends_on:
+    #         - brickOffersDb
+    #     networks:
+    #         - brick-offers-network
+    #     restart: unless-stopped
+    #
+    # messenger-normal:
+    #     build:
+    #         context: .
+    #         dockerfile: .infrastructure/docker/php/Dockerfile
+    #         target: build-local
+    #     volumes:
+    #         - ./:/var/www/html
+    #     env_file: .env
+    #     command: php bin/console messenger:consume normal --time-limit=3600 --memory-limit=512M -vv
+    #     depends_on:
+    #         - brickOffersDb
+    #     networks:
+    #         - brick-offers-network
+    #     restart: unless-stopped
+    #
+    # messenger-low:
+    #     build:
+    #         context: .
+    #         dockerfile: .infrastructure/docker/php/Dockerfile
+    #         target: build-local
+    #     volumes:
+    #         - ./:/var/www/html
+    #     env_file: .env
+    #     command: php bin/console messenger:consume low_priority scheduler_default --time-limit=3600 --memory-limit=512M -vv
+    #     depends_on:
+    #         - brickOffersDb
+    #     networks:
+    #         - brick-offers-network
+    #     restart: unless-stopped
+
 volumes:
     brick_offers_db_data:
 

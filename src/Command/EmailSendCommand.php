@@ -6,16 +6,19 @@ namespace App\Command;
 
 use App\Enum\EmailProvider;
 use App\Enum\OfferStatus;
+use App\Message\SendEmailMessage;
 use App\Repository\OfferRepository;
 use App\Repository\UserRepository;
 use App\Service\Email\EmailService;
 use App\Service\Offer\OfferService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
     name: 'app:email:send',
@@ -28,6 +31,8 @@ class EmailSendCommand extends Command
         private readonly OfferRepository $offerRepository,
         private readonly UserRepository $userRepository,
         private readonly EmailService $emailService,
+        private readonly MessageBusInterface $messageBus,
+        private readonly EntityManagerInterface $em,
     ) {
         parent::__construct();
     }
@@ -40,6 +45,7 @@ class EmailSendCommand extends Command
             ->addOption('limit', 'l', InputOption::VALUE_REQUIRED, 'Maximum to send', '50')
             ->addOption('provider', 'p', InputOption::VALUE_REQUIRED, 'Email provider (smtp, ses, null)', 'smtp')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be sent without executing')
+            ->addOption('async', null, InputOption::VALUE_NONE, 'Dispatch to message queue instead of sending directly')
         ;
     }
 
@@ -47,8 +53,9 @@ class EmailSendCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $dryRun = $input->getOption('dry-run');
+        $async = $input->getOption('async');
 
-        // Validate provider
+        // Validate provider (only needed for sync mode)
         $providerName = $input->getOption('provider');
         try {
             $provider = EmailProvider::from($providerName);
@@ -58,8 +65,8 @@ class EmailSendCommand extends Command
             return Command::FAILURE;
         }
 
-        // Check if provider is available
-        if (!$this->emailService->isProviderAvailable($provider)) {
+        // Check if provider is available (only for sync mode)
+        if (!$async && !$this->emailService->isProviderAvailable($provider)) {
             $io->warning(sprintf('Provider %s is not configured', $provider->value));
 
             if (!$dryRun) {
@@ -69,11 +76,11 @@ class EmailSendCommand extends Command
 
         // Send specific offer
         if ($offerId = $input->getOption('offer')) {
-            return $this->sendSingleOffer($io, $offerId, $provider, $dryRun);
+            return $this->sendSingleOffer($io, $offerId, $provider, $dryRun, $async);
         }
 
         // Send batch
-        return $this->sendBatch($io, $input, $provider, $dryRun);
+        return $this->sendBatch($io, $input, $provider, $dryRun, $async);
     }
 
     private function sendSingleOffer(
@@ -81,6 +88,7 @@ class EmailSendCommand extends Command
         string $offerId,
         EmailProvider $provider,
         bool $dryRun,
+        bool $async = false,
     ): int {
         $offer = $this->offerRepository->find($offerId);
 
@@ -99,11 +107,12 @@ class EmailSendCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->section('Sending Offer');
+        $io->section($async ? 'Queuing Offer' : 'Sending Offer');
         $io->table([], [
             ['Offer ID', $offer->getId()?->toRfc4122()],
             ['Recipient', $offer->getRecipientEmail()],
             ['Subject', $offer->getSubject()],
+            ['Mode', $async ? 'async (queued)' : 'sync'],
             ['Provider', $provider->value],
         ]);
 
@@ -113,6 +122,26 @@ class EmailSendCommand extends Command
             return Command::SUCCESS;
         }
 
+        // Async mode - dispatch to queue
+        if ($async) {
+            $offerId = $offer->getId();
+            if ($offerId === null) {
+                $io->error('Offer has no ID');
+
+                return Command::FAILURE;
+            }
+
+            $this->messageBus->dispatch(new SendEmailMessage(
+                offerId: $offerId,
+                userId: $offer->getUser()->getId(),
+            ));
+
+            $io->success('Email queued for sending');
+
+            return Command::SUCCESS;
+        }
+
+        // Sync mode - send directly
         try {
             // Check rate limits
             $rateLimitResult = $this->offerService->canSend($offer);
@@ -134,7 +163,7 @@ class EmailSendCommand extends Command
 
             // Mark as sent
             $offer->markSent();
-            $this->offerRepository->getEntityManager()->flush();
+            $this->em->flush();
 
             $io->success(sprintf('Email sent! Message ID: %s', $result->messageId));
 
@@ -151,6 +180,7 @@ class EmailSendCommand extends Command
         InputInterface $input,
         EmailProvider $provider,
         bool $dryRun,
+        bool $async = false,
     ): int {
         $limit = (int) $input->getOption('limit');
 
@@ -186,9 +216,12 @@ class EmailSendCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->section('Email Send Queue');
+        $io->section($async ? 'Email Queue (Async)' : 'Email Send Queue');
         $io->text(sprintf('Found %d approved offers', count($offers)));
-        $io->text(sprintf('Provider: %s', $provider->value));
+        $io->text(sprintf('Mode: %s', $async ? 'async (queued)' : 'sync'));
+        if (!$async) {
+            $io->text(sprintf('Provider: %s', $provider->value));
+        }
         $io->newLine();
 
         if ($dryRun) {
@@ -205,6 +238,37 @@ class EmailSendCommand extends Command
             return Command::SUCCESS;
         }
 
+        // Async mode - dispatch all to queue
+        if ($async) {
+            $queued = 0;
+
+            foreach ($offers as $offer) {
+                $offerId = $offer->getId();
+                if ($offerId === null) {
+                    $io->warning('Skipping offer without ID');
+                    continue;
+                }
+
+                $io->text(sprintf(
+                    'Queuing: %s',
+                    $offer->getRecipientEmail()
+                ));
+
+                $this->messageBus->dispatch(new SendEmailMessage(
+                    offerId: $offerId,
+                    userId: $offer->getUser()->getId(),
+                ));
+
+                $queued++;
+            }
+
+            $io->newLine();
+            $io->success(sprintf('Queued %d emails for async sending', $queued));
+
+            return Command::SUCCESS;
+        }
+
+        // Sync mode - send directly
         $sent = 0;
         $failed = 0;
         $skipped = 0;
@@ -236,7 +300,7 @@ class EmailSendCommand extends Command
 
                 // Mark as sent
                 $offer->markSent();
-                $this->offerRepository->getEntityManager()->flush();
+                $this->em->flush();
 
                 $sent++;
             } catch (\Throwable $e) {

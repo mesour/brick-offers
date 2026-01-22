@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Message\SyncAresDataMessage;
 use App\Repository\CompanyRepository;
 use App\Service\Company\CompanyService;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -12,6 +13,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
     name: 'app:company:sync-ares',
@@ -22,6 +24,7 @@ class CompanySyncAresCommand extends Command
     public function __construct(
         private readonly CompanyRepository $companyRepository,
         private readonly CompanyService $companyService,
+        private readonly MessageBusInterface $messageBus,
     ) {
         parent::__construct();
     }
@@ -53,6 +56,12 @@ class CompanySyncAresCommand extends Command
                 null,
                 InputOption::VALUE_NONE,
                 'Show what would be synced without making changes'
+            )
+            ->addOption(
+                'async',
+                null,
+                InputOption::VALUE_NONE,
+                'Dispatch sync jobs to the message queue instead of processing synchronously'
             );
     }
 
@@ -64,8 +73,9 @@ class CompanySyncAresCommand extends Command
         $forceRefresh = $input->getOption('force-refresh');
         $specificIco = $input->getOption('ico');
         $dryRun = $input->getOption('dry-run');
+        $async = $input->getOption('async');
 
-        $io->title('ARES Data Synchronization');
+        $io->title($async ? 'ARES Data Synchronization (Async Mode)' : 'ARES Data Synchronization');
         $io->note('Companies are shared across all users');
 
         if ($dryRun) {
@@ -74,7 +84,7 @@ class CompanySyncAresCommand extends Command
 
         // Handle specific IČO
         if ($specificIco !== null) {
-            return $this->syncSingleIco($io, $specificIco, $dryRun);
+            return $this->syncSingleIco($io, $specificIco, $dryRun, $async);
         }
 
         // Find companies needing update
@@ -99,7 +109,25 @@ class CompanySyncAresCommand extends Command
             return Command::SUCCESS;
         }
 
-        // Sync companies
+        // Async mode - dispatch message to queue
+        if ($async) {
+            $icos = array_filter(array_map(fn ($c) => $c->getIco(), $companies));
+
+            if (empty($icos)) {
+                $io->warning('No valid IČOs to dispatch');
+
+                return Command::SUCCESS;
+            }
+
+            $message = new SyncAresDataMessage(icos: $icos);
+            $this->messageBus->dispatch($message);
+
+            $io->success(sprintf('Dispatched ARES sync job for %d companies to the queue', count($icos)));
+
+            return Command::SUCCESS;
+        }
+
+        // Sync companies (synchronous)
         $successCount = 0;
         $failCount = 0;
 
@@ -129,7 +157,7 @@ class CompanySyncAresCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function syncSingleIco(SymfonyStyle $io, string $ico, bool $dryRun): int
+    private function syncSingleIco(SymfonyStyle $io, string $ico, bool $dryRun, bool $async): int
     {
         // Validate IČO
         if (!preg_match('/^\d{8}$/', $ico)) {
@@ -143,9 +171,19 @@ class CompanySyncAresCommand extends Command
         if ($dryRun) {
             $existing = $this->companyRepository->findByIco($ico);
             $io->note($existing !== null
-                ? sprintf('Would refresh: %s', $existing->getName())
-                : 'Would create new company from ARES'
+                ? sprintf('Would %s: %s', $async ? 'dispatch sync for' : 'refresh', $existing->getName())
+                : 'Would ' . ($async ? 'dispatch creation of' : 'create') . ' new company from ARES'
             );
+
+            return Command::SUCCESS;
+        }
+
+        // Async mode - dispatch message to queue
+        if ($async) {
+            $message = new SyncAresDataMessage(icos: [$ico]);
+            $this->messageBus->dispatch($message);
+
+            $io->success(sprintf('Dispatched ARES sync job for IČO %s to the queue', $ico));
 
             return Command::SUCCESS;
         }

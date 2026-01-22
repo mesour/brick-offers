@@ -1,0 +1,4 @@
+framework:
+    scheduler:
+        # Scheduler will be configured via MainScheduleProvider
+        # See src/Scheduler/MainScheduleProvider.php

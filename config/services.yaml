@@ -153,3 +153,8 @@ when@test:
                 $defaultProvider: '%env(EMAIL_DEFAULT_PROVIDER)%'
                 $defaultFromEmail: '%env(EMAIL_FROM)%'
                 $defaultFromName: '%env(EMAIL_FROM_NAME)%'
+
+        # Disable async webhooks in tests for synchronous processing
+        App\Controller\SesWebhookController:
+            arguments:
+                $asyncWebhooks: false

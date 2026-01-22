@@ -1,155 +1,302 @@
 # Public Portal - Implementation Plan
 
-## Status: TODO (otázky k zodpovězení)
+## Status: TODO
 
 ## Shrnutí
 
-Veřejné landing pages pro klienty - zobrazení analýzy, návrhu a kontaktního formuláře.
+Veřejné landing pages pro klienty - kompletní prezentace na jedné stránce: analýza + návrh + kontaktní formulář. Per-user branding s volitelným benchmark widgetem.
+
+**Technologie:** Twig templates + Bootstrap 5 + vanilla JS (bez jQuery)
 
 ---
 
-## Předpokládané URL
+## Klíčová rozhodnutí
+
+| Otázka | Odpověď |
+|--------|---------|
+| Účel portálu | Kompletní prezentace (analýza + návrh + formulář) |
+| Technologie | Twig templates + Bootstrap 5 + vanilla JS (bez jQuery) |
+| Benchmark | Volitelně per-user (nastavení v User.settings) |
+| Industry templates | Jedna šablona s CSS variacemi |
+
+---
+
+## URL Struktura (zjednodušeno)
 
 ```
-/p/{tracking_token}           - Hlavní landing page
-/p/{tracking_token}/analysis  - Detailní analýza
-/p/{tracking_token}/proposal  - Návrh/design
-/p/{tracking_token}/contact   - Kontaktní formulář
+/p/{tracking_token}           - Hlavní landing page (vše na jedné stránce)
+/p/{tracking_token}/contact   - Kontaktní formulář (volitelně separátně)
 ```
 
 ---
 
-## Otázky k zodpovězení
+## Obsah landing page
 
-### 1. Design a branding
-
-- [ ] **Jednotný design** - jedna šablona pro všechny?
-- [ ] **Per-user branding** - logo, barvy z User.settings?
-- [ ] **Per-industry** - různé šablony podle odvětví?
-- [ ] **White-label** - kompletně customizovatelné?
-
-### 2. Obsah stránky
-
-Co zobrazit na landing page?
-- [ ] Shrnutí analýzy (issues, skóre)
-- [ ] Screenshot návrhu (pokud existuje)
-- [ ] Seznam problémů (srozumitelně pro laika)
-- [ ] CTA / kontaktní formulář
-- [ ] Cena/nabídka?
-
-### 3. Kontaktní formulář
-
-- [ ] Jaká pole? (jméno, email, telefon, zpráva)
-- [ ] Kam posílat? (email, webhook, CRM?)
-- [ ] Notifikace vlastníkovi leadu?
-- [ ] Spam protection (reCAPTCHA, honeypot)?
-
-### 4. Tracking
-
-- [ ] Logovat návštěvy?
-- [ ] A/B testování variant?
-- [ ] Heatmapy? (externí služba)
-
-### 5. SEO a indexace
-
-- [ ] **noindex** - nechceme v Google?
-- [ ] **robots.txt** block?
-- [ ] Expirační doba stránky?
-
-### 6. Multi-tenancy
-
-- Stránka patří uživateli přes Offer → Lead → User
-- Branding z User.settings?
+1. **Header** - Logo klienta (z User.settings), název analyzovaného webu
+2. **Score sekce** - Celkové skóre + volitelný benchmark text
+3. **Problémy** - Seznam issues srozumitelně pro laika
+4. **Návrh** - Screenshot/preview proposalu (pokud existuje)
+5. **Kontaktní formulář** - Inline na stránce
+6. **Footer** - Unsubscribe link, powered by
 
 ---
 
-## Předběžný implementační plán
+## Implementační plán
 
-### Fáze 1: Controller
+### Fáze 1: Controller + Base Template
 
 - [ ] `src/Controller/PublicPortalController.php`
   - `show(string $token)` - hlavní stránka
-  - `analysis(string $token)` - detail analýzy
-  - `proposal(string $token)` - návrh
-  - `contact(string $token, Request $request)` - formulář
+  - `contact(string $token, Request $request)` - form handling
+- [ ] Token validation (load Offer by tracking_token)
+- [ ] noindex/nofollow meta tags
+- [ ] `templates/portal/base.html.twig` - layout s per-user brandingem
+- [ ] `templates/portal/show.html.twig` - landing page
 
-### Fáze 2: Templates
+---
 
-- [ ] `templates/portal/base.html.twig`
-- [ ] `templates/portal/show.html.twig`
-- [ ] `templates/portal/analysis.html.twig`
-- [ ] `templates/portal/proposal.html.twig`
-- [ ] `templates/portal/contact.html.twig`
+### Fáze 2: Zobrazení analýzy
 
-### Fáze 3: Assets
+#### 2.1 Score Display
+- [ ] `templates/portal/partials/score.html.twig`
+- [ ] Celkové skóre vizualizace (kruhový progress bar)
+- [ ] Score breakdown by category (progress bars)
+- [ ] Barevné kódování podle skóre
 
-- [ ] `assets/styles/portal.css`
+#### 2.2 Issues Display
+- [ ] `templates/portal/partials/issues.html.twig`
+- [ ] Seznam issues srozumitelně pro laika
+- [ ] IssueCategory ikony a barvy:
+  - HTTP - modrá
+  - SECURITY - červená
+  - SEO - zelená
+  - PERFORMANCE - oranžová
+  - ACCESSIBILITY - fialová
+  - BEST_PRACTICES - šedá
+- [ ] IssueSeverity barevné kódování:
+  - CRITICAL - červená (#dc3545)
+  - HIGH - oranžová (#fd7e14)
+  - MEDIUM - žlutá (#ffc107)
+  - LOW - modrá (#17a2b8)
+  - INFO - šedá (#6c757d)
+
+#### 2.3 Benchmark Widget (volitelný)
+- [ ] Jednoduchá věta "Váš web je lepší/horší než průměr odvětví"
+- [ ] Zobrazení řízeno přes `User.settings.portal.showBenchmark: boolean`
+- [ ] Žádná samostatná stránka - pouze inline text
+
+---
+
+### Fáze 3: Zobrazení návrhu (proposal)
+
+- [ ] `templates/portal/partials/proposal.html.twig`
+- [ ] Screenshot preview (pokud existuje proposal)
+- [ ] Link na full-size nebo interaktivní verzi
+- [ ] Podpora různých typů:
+  - design_mockup - screenshot preview
+  - report typy - PDF ke stažení nebo inline preview
+- [ ] Graceful handling když proposal neexistuje
+
+---
+
+### Fáze 4: Kontaktní formulář
+
+#### 4.1 Form Setup
+- [ ] `src/Form/PortalContactFormType.php`
+- [ ] `src/Service/PortalContactHandler.php`
+- [ ] `templates/portal/partials/contact.html.twig`
+
+#### 4.2 Form Fields
+- [ ] Jméno (předvyplněno z Lead)
+- [ ] Email (předvyplněno z Lead)
+- [ ] Telefon (volitelný)
+- [ ] Typ zájmu (dropdown):
+  - Nový design webu
+  - SEO audit
+  - Marketing konzultace
+  - Bezpečnostní audit
+  - Jiné
+- [ ] Zpráva (textarea)
+
+#### 4.3 GDPR & Security
+- [ ] GDPR souhlas checkbox (povinný)
+- [ ] Link na privacy policy
+- [ ] Honeypot field (spam protection)
+- [ ] Consent logging
+
+#### 4.4 Submission Handling
+- [ ] Email notifikace vlastníkovi leadu (User)
+- [ ] Lead status update
+- [ ] Confirmation message
+
+---
+
+### Fáze 5: Styling + JS
+
+#### 5.1 Bootstrap 5 Setup
+- [ ] Instalace Bootstrap 5 via npm/Webpack Encore
+- [ ] `assets/styles/portal.scss` - Bootstrap import + customizace
+- [ ] CSS variables pro theming (primaryColor z User.settings)
+- [ ] Využití Bootstrap komponent (cards, alerts, buttons, forms, progress bars)
+- [ ] Responsivní grid system (mobile-first)
+- [ ] Print styles
+
+#### 5.2 Vanilla JS
 - [ ] `assets/js/portal.js`
+- [ ] Bootstrap JS komponenty (bez jQuery - Bootstrap 5 je jQuery-free)
+- [ ] Form validation (Bootstrap validation styles + vanilla JS)
+- [ ] Smooth scroll navigace
 
-### Fáze 4: Contact Form
+#### 5.3 Grafy (volitelně)
+- [ ] Chart.js pro score breakdown
+- [ ] Alternativně: Bootstrap progress bars pro jednodušší vizualizaci
 
-- [ ] `src/Form/ContactFormType.php`
-- [ ] `src/Service/ContactFormHandler.php`
-- [ ] Email notifikace
+#### 5.4 Visit Tracking
+- [ ] Track page view při načtení
+- [ ] Update Offer.viewedAt
 
-### Fáze 5: Visit Tracking (volitelné)
+---
 
-- [ ] `src/Entity/PortalVisit.php` (?)
-- [ ] Logování v controlleru
+## User.settings rozšíření
+
+Přidat do User entity settings JSON:
+
+```json
+{
+  "portal": {
+    "showBenchmark": true,
+    "logo": "https://...",
+    "primaryColor": "#3498db",
+    "companyName": "Example s.r.o."
+  }
+}
+```
+
+---
+
+## Klíčové soubory
+
+```
+src/Controller/
+└── PublicPortalController.php
+
+src/Form/
+└── PortalContactFormType.php
+
+src/Service/
+└── PortalContactHandler.php
+
+templates/portal/
+├── base.html.twig
+├── show.html.twig
+└── partials/
+    ├── score.html.twig
+    ├── issues.html.twig
+    ├── proposal.html.twig
+    └── contact.html.twig
+
+assets/
+├── styles/
+│   ├── _bootstrap-custom.scss  # Bootstrap variables override
+│   └── portal.scss             # Portal styles
+└── js/portal.js
+```
+
+---
+
+## Mockup - Landing Page
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [User Logo]                    [Company Name s.r.o.]   │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Analýza webu: example.cz                              │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ CELKOVÉ SKÓRE                                   │   │
+│  │      ┌───┐                                      │   │
+│  │      │65 │  Váš web je lepší než průměr        │   │
+│  │      └───┘  ve vašem odvětví.                   │   │
+│  │   /100 bodů                                     │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  Score breakdown:                                       │
+│  Performance  ████████░░ 78%                           │
+│  Security     ██████░░░░ 55%                           │
+│  SEO          █████████░ 85%                           │
+│  Accessibility ███████░░░ 68%                          │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ NALEZENÉ PROBLÉMY                        🔴 3   │   │
+│  │ • SSL certifikát expiruje za 14 dní             │   │
+│  │ • Chybí důležitá bezpečnostní nastavení         │   │
+│  │ • Formuláře nejsou dostatečně zabezpečené       │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ NÁVRH NOVÉHO DESIGNU                            │   │
+│  │ ┌───────────────────────────────────────────┐   │   │
+│  │ │                                           │   │   │
+│  │ │         [Design Screenshot]               │   │   │
+│  │ │                                           │   │   │
+│  │ └───────────────────────────────────────────┘   │   │
+│  │ [Zobrazit detail]                              │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ MÁTE ZÁJEM O ZLEPŠENÍ?                          │   │
+│  │                                                 │   │
+│  │ Jméno:  [Jan Novák___________]                  │   │
+│  │ Email:  [jan@example.cz______]                  │   │
+│  │ Telefon: [+420 _____________]                   │   │
+│  │ Zájem o: [Nový design webu     ▼]               │   │
+│  │ Zpráva: [____________________]                  │   │
+│  │          [____________________]                  │   │
+│  │                                                 │   │
+│  │ [x] Souhlasím se zpracováním osobních údajů    │   │
+│  │                                                 │   │
+│  │ [        ODESLAT POPTÁVKU        ]              │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  © 2026 | Powered by WebAnalyzer | Unsubscribe         │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## SEO & Indexace
+
+- [ ] `<meta name="robots" content="noindex, nofollow">`
+- [ ] `robots.txt` - block `/p/*`
+- [ ] No canonical URL
 
 ---
 
 ## Závislosti
 
-- **Offer Module** - tracking token
-- **Analysis** - data pro zobrazení
-- **Proposal** - návrh pro zobrazení
+- **Offer** - tracking token, offer data
+- **Analysis** - analýza a issues
+- **Proposal** - návrhy pro zobrazení (volitelně)
+- **Lead** - kontaktní údaje pro předvyplnění
+- **User** - settings pro branding
+- **IndustryBenchmark** - benchmark data (pro volitelný widget)
+- **Bootstrap 5** - sdílený s Admin Module (via Webpack Encore)
 
 ---
 
-## Mockup stránky (předběžný)
-
-```
-┌─────────────────────────────────────────┐
-│  [Logo]                                  │
-├─────────────────────────────────────────┤
-│                                         │
-│  Analýza vašeho webu: example.cz        │
-│                                         │
-│  ┌─────────────────────────────────┐    │
-│  │ Celkové skóre: 65/100           │    │
-│  │ Kritické problémy: 3            │    │
-│  │ Doporučení: 12                  │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-│  Nalezené problémy:                     │
-│  • SSL certifikát expiruje za 14 dní    │
-│  • Chybí security headers              │
-│  • Pomalé načítání (4.2s)              │
-│                                         │
-│  ┌─────────────────────────────────┐    │
-│  │ [Screenshot návrhu]              │    │
-│  │                                  │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-│  ┌─────────────────────────────────┐    │
-│  │ Kontaktujte nás                 │    │
-│  │ Jméno: [____________]           │    │
-│  │ Email: [____________]           │    │
-│  │ Telefon: [____________]         │    │
-│  │ [Odeslat]                       │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-├─────────────────────────────────────────┤
-│  © 2026 | Unsubscribe                   │
-└─────────────────────────────────────────┘
-```
-
----
-
-## Verifikace (předběžná)
+## Verifikace
 
 ```bash
-# Vytvoření test offeru s tokenem
-curl http://localhost:7270/p/test-token-123
+# Po implementaci
+curl http://localhost:7270/p/{tracking_token}
+
+# Ověřit:
+# 1. Zobrazení analýzy a skóre
+# 2. Zobrazení návrhu (pokud existuje)
+# 3. Funkčnost kontaktního formuláře
+# 4. Per-user branding (logo, barvy)
+# 5. Benchmark text (pokud zapnutý v User.settings)
+# 6. Responsivní design na mobilu
 ```

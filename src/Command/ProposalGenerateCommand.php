@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\Lead;
 use App\Entity\User;
 use App\Enum\ProposalType;
+use App\Message\GenerateProposalMessage;
 use App\Repository\AnalysisRepository;
 use App\Repository\LeadRepository;
 use App\Repository\ProposalRepository;
@@ -18,6 +19,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
     name: 'app:proposal:generate',
@@ -31,6 +33,7 @@ class ProposalGenerateCommand extends Command
         private readonly UserRepository $userRepository,
         private readonly AnalysisRepository $analysisRepository,
         private readonly ProposalRepository $proposalRepository,
+        private readonly MessageBusInterface $messageBus,
     ) {
         parent::__construct();
     }
@@ -47,6 +50,7 @@ class ProposalGenerateCommand extends Command
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be generated without executing')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Force regeneration even if proposal exists')
             ->addOption('recycle', 'r', InputOption::VALUE_NONE, 'Try to use recycled proposal instead of generating')
+            ->addOption('async', null, InputOption::VALUE_NONE, 'Dispatch generation job to the message queue instead of processing synchronously')
         ;
     }
 
@@ -54,9 +58,10 @@ class ProposalGenerateCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $dryRun = $input->getOption('dry-run');
+        $async = $input->getOption('async');
 
         if ($input->getOption('batch')) {
-            return $this->processBatch($io, $input, $dryRun);
+            return $this->processBatch($io, $input, $dryRun, $async);
         }
 
         // Single proposal generation
@@ -129,7 +134,71 @@ class ProposalGenerateCommand extends Command
             }
         }
 
+        // Async mode - dispatch message to queue
+        if ($async) {
+            return $this->dispatchAsync($io, $lead, $user, $analysis, $type, $dryRun);
+        }
+
         return $this->generateForLead($io, $lead, $user, $analysis, $type, $input, $dryRun);
+    }
+
+    private function dispatchAsync(
+        SymfonyStyle $io,
+        Lead $lead,
+        User $user,
+        mixed $analysis,
+        ?ProposalType $type,
+        bool $dryRun,
+    ): int {
+        $leadId = $lead->getId();
+        $userId = $user->getId();
+        $analysisId = $analysis->getId();
+
+        if ($leadId === null || $userId === null) {
+            $io->error('Lead or User ID is missing');
+
+            return Command::FAILURE;
+        }
+
+        // Determine proposal type from generator if not specified
+        $proposalType = $type;
+        if ($proposalType === null) {
+            $industry = $lead->getIndustry();
+            $generator = $this->proposalService->getGenerator($industry ?? \App\Enum\Industry::OTHER);
+            $proposalType = $generator?->getProposalType();
+        }
+
+        if ($proposalType === null) {
+            $io->error('Could not determine proposal type');
+
+            return Command::FAILURE;
+        }
+
+        $io->section('Proposal Generation (Async Mode)');
+        $io->table([], [
+            ['Lead', $lead->getDomain() ?? $leadId->toRfc4122()],
+            ['User', $user->getCode()],
+            ['Type', $proposalType->value],
+        ]);
+
+        if ($dryRun) {
+            $io->note('DRY RUN MODE - No message will be dispatched');
+
+            return Command::SUCCESS;
+        }
+
+        $message = new GenerateProposalMessage(
+            leadId: $leadId,
+            userId: $userId,
+            proposalType: $proposalType->value,
+            analysisId: $analysisId,
+        );
+
+        $this->messageBus->dispatch($message);
+
+        $io->success('Dispatched proposal generation job to the queue');
+
+        return Command::SUCCESS;
     }
 
     private function generateForLead(
@@ -257,11 +326,11 @@ class ProposalGenerateCommand extends Command
         }
     }
 
-    private function processBatch(SymfonyStyle $io, InputInterface $input, bool $dryRun): int
+    private function processBatch(SymfonyStyle $io, InputInterface $input, bool $dryRun, bool $async): int
     {
         $limit = (int) $input->getOption('limit');
 
-        $io->section('Batch Processing');
+        $io->section($async ? 'Batch Processing (Async Mode)' : 'Batch Processing');
 
         $pending = $this->proposalRepository->findPendingGeneration($limit);
 
@@ -281,7 +350,7 @@ class ProposalGenerateCommand extends Command
                     $proposal->getLead()?->getDomain() ?? 'unknown'
                 ));
             }
-            $io->success('Dry run - no proposals generated');
+            $io->success('Dry run - no proposals ' . ($async ? 'dispatched' : 'generated'));
 
             return Command::SUCCESS;
         }
@@ -291,13 +360,36 @@ class ProposalGenerateCommand extends Command
 
         foreach ($pending as $proposal) {
             $io->text(sprintf(
-                'Processing: %s (%s)',
+                '%s: %s (%s)',
+                $async ? 'Dispatching' : 'Processing',
                 $proposal->getId()?->toRfc4122(),
                 $proposal->getLead()?->getDomain() ?? 'unknown'
             ));
 
             try {
-                $this->proposalService->generate($proposal);
+                if ($async) {
+                    $lead = $proposal->getLead();
+                    $user = $proposal->getUser();
+                    $leadId = $lead?->getId();
+                    $userId = $user->getId();
+
+                    if ($leadId === null || $userId === null) {
+                        $io->warning('Skipping: Lead or User ID is missing');
+                        $failed++;
+                        continue;
+                    }
+
+                    $message = new GenerateProposalMessage(
+                        leadId: $leadId,
+                        userId: $userId,
+                        proposalType: $proposal->getType()->value,
+                        analysisId: $lead->getLatestAnalysis()?->getId(),
+                    );
+
+                    $this->messageBus->dispatch($message);
+                } else {
+                    $this->proposalService->generate($proposal);
+                }
                 $processed++;
             } catch (\Throwable $e) {
                 $io->warning(sprintf('Failed: %s', $e->getMessage()));
@@ -305,7 +397,7 @@ class ProposalGenerateCommand extends Command
             }
         }
 
-        $io->success(sprintf('Processed: %d, Failed: %d', $processed, $failed));
+        $io->success(sprintf('%s: %d, Failed: %d', $async ? 'Dispatched' : 'Processed', $processed, $failed));
 
         return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }

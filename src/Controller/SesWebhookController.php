@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Enum\EmailBounceType;
+use App\Message\ProcessSesWebhookMessage;
 use App\Service\Email\EmailService;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -12,6 +13,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
@@ -22,9 +24,10 @@ class SesWebhookController extends AbstractController
 {
     public function __construct(
         private readonly EmailService $emailService,
+        private readonly MessageBusInterface $messageBus,
         private readonly LoggerInterface $logger,
-    ) {
-    }
+        private readonly bool $asyncWebhooks = true,
+    ) {}
 
     /**
      * Handle SNS notifications from SES.
@@ -103,7 +106,21 @@ class SesWebhookController extends AbstractController
         }
 
         $notificationType = $message['notificationType'] ?? $message['eventType'] ?? null;
+        $mail = $message['mail'] ?? [];
+        $messageId = $mail['messageId'] ?? null;
 
+        // Async mode - dispatch to queue for background processing
+        if ($this->asyncWebhooks && $messageId !== null && $notificationType !== null) {
+            $this->messageBus->dispatch(new ProcessSesWebhookMessage(
+                messageId: $messageId,
+                notificationType: $notificationType,
+                payload: $message,
+            ));
+
+            return new JsonResponse(['status' => 'queued']);
+        }
+
+        // Sync mode - process immediately
         switch ($notificationType) {
             case 'Bounce':
                 $this->handleBounce($message);

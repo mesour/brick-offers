@@ -269,4 +269,48 @@ class AnalysisResultRepository extends ServiceEntityRepository
             'limit' => $limit,
         ]);
     }
+
+    /**
+     * Find analysis results with SSL certificates expiring within threshold days.
+     *
+     * @return array<array{result: AnalysisResult, lead_id: string, domain: string, user_code: string, expires_days: int}>
+     */
+    public function findWithExpiringSsl(int $thresholdDays, ?string $userCode = null): array
+    {
+        $connection = $this->getEntityManager()->getConnection();
+
+        $sql = "
+            SELECT
+                ar.id as result_id,
+                l.id as lead_id,
+                l.domain,
+                u.code as user_code,
+                (ar.raw_data->'checks'->'ssl'->>'expiresDays')::int as expires_days
+            FROM analysis_results ar
+            JOIN analyses a ON ar.analysis_id = a.id
+            JOIN leads l ON a.lead_id = l.id
+            JOIN users u ON l.user_id = u.id
+            WHERE ar.category = :category
+              AND ar.status = :status
+              AND ar.raw_data->'checks'->'ssl'->'expiresDays' IS NOT NULL
+              AND (ar.raw_data->'checks'->'ssl'->>'expiresDays')::int > 0
+              AND (ar.raw_data->'checks'->'ssl'->>'expiresDays')::int <= :threshold
+              AND a.id = l.latest_analysis_id
+        ";
+
+        $params = [
+            'category' => IssueCategory::HTTP->value,
+            'status' => AnalysisStatus::COMPLETED->value,
+            'threshold' => $thresholdDays,
+        ];
+
+        if ($userCode !== null) {
+            $sql .= ' AND u.code = :userCode';
+            $params['userCode'] = $userCode;
+        }
+
+        $sql .= ' ORDER BY expires_days ASC, u.code ASC';
+
+        return $connection->fetchAllAssociative($sql, $params);
+    }
 }

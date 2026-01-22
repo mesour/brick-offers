@@ -1,0 +1,82 @@
+framework:
+    messenger:
+        # Failed messages transport for later inspection/retry
+        failure_transport: failed
+
+        transports:
+            # Failed messages storage
+            failed:
+                dsn: 'doctrine://default?queue_name=failed'
+
+            # High priority: emails, webhooks (fast processing required)
+            high_priority:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    queue_name: high
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 2
+                    max_delay: 60000
+
+            # Normal priority: analysis, proposals, offers, ARES sync
+            normal:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    queue_name: normal
+                retry_strategy:
+                    max_retries: 3
+                    delay: 5000
+                    multiplier: 3
+                    max_delay: 300000
+
+            # Low priority: discovery, screenshots, benchmarks, cleanup
+            low_priority:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    queue_name: low
+                retry_strategy:
+                    max_retries: 2
+                    delay: 30000
+                    multiplier: 2
+                    max_delay: 600000
+
+            # Sync transport for development/testing
+            sync: 'sync://'
+
+            # Scheduler transport for recurring tasks
+            scheduler_default: 'scheduler://default'
+
+        routing:
+            # High priority messages
+            'App\Message\SendEmailMessage': high_priority
+            'App\Message\ProcessSesWebhookMessage': high_priority
+
+            # Normal priority messages
+            'App\Message\AnalyzeLeadMessage': normal
+            'App\Message\GenerateProposalMessage': normal
+            'App\Message\GenerateOfferMessage': normal
+            'App\Message\SyncAresDataMessage': normal
+
+            # Low priority messages
+            'App\Message\DiscoverLeadsMessage': low_priority
+            'App\Message\TakeScreenshotMessage': low_priority
+            'App\Message\CalculateBenchmarksMessage': low_priority
+
+            # Low priority - scheduled tasks
+            'App\Message\ExpireProposalsMessage': low_priority
+            'App\Message\CheckSslCertificatesMessage': low_priority
+            'App\Message\CleanupOldDataMessage': low_priority
+            'App\Message\BatchDiscoveryMessage': low_priority
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                # Use in-memory transport for tests
+                high_priority: 'in-memory://'
+                normal: 'in-memory://'
+                low_priority: 'in-memory://'
+                failed: 'in-memory://'
+                # Disable scheduler in tests
+                scheduler_default: 'in-memory://'

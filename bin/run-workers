@@ -1,0 +1,94 @@
+#!/bin/bash
+# Run Symfony Messenger workers for development
+# Usage: bin/run-workers [all|high|normal|low|scheduler]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
+
+# Default to running all workers
+WORKER_TYPE="${1:-all}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log() {
+    echo -e "${GREEN}[$(date +'%H:%M:%S')]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[$(date +'%H:%M:%S')] WARNING:${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[$(date +'%H:%M:%S')] ERROR:${NC} $1"
+}
+
+run_worker() {
+    local queue=$1
+    local memory=$2
+    log "Starting $queue worker (memory limit: ${memory}M)..."
+    php bin/console messenger:consume "$queue" --time-limit=3600 --memory-limit="${memory}M" -vv
+}
+
+case "$WORKER_TYPE" in
+    high)
+        run_worker "high_priority" 256
+        ;;
+    normal)
+        run_worker "normal" 512
+        ;;
+    low)
+        run_worker "low_priority" 512
+        ;;
+    scheduler)
+        run_worker "scheduler_default" 128
+        ;;
+    all)
+        log "Starting all workers in parallel..."
+        log "Press Ctrl+C to stop all workers"
+        echo ""
+
+        # Run workers in background
+        php bin/console messenger:consume high_priority --time-limit=3600 --memory-limit=256M -vv &
+        PID_HIGH=$!
+        log "High priority worker started (PID: $PID_HIGH)"
+
+        php bin/console messenger:consume normal --time-limit=3600 --memory-limit=512M -vv &
+        PID_NORMAL=$!
+        log "Normal priority worker started (PID: $PID_NORMAL)"
+
+        php bin/console messenger:consume low_priority --time-limit=3600 --memory-limit=512M -vv &
+        PID_LOW=$!
+        log "Low priority worker started (PID: $PID_LOW)"
+
+        php bin/console messenger:consume scheduler_default --time-limit=3600 --memory-limit=128M -vv &
+        PID_SCHEDULER=$!
+        log "Scheduler worker started (PID: $PID_SCHEDULER)"
+
+        echo ""
+        log "All workers running. PIDs: high=$PID_HIGH, normal=$PID_NORMAL, low=$PID_LOW, scheduler=$PID_SCHEDULER"
+
+        # Wait for any worker to exit
+        trap "kill $PID_HIGH $PID_NORMAL $PID_LOW $PID_SCHEDULER 2>/dev/null; exit" INT TERM
+        wait
+        ;;
+    *)
+        error "Unknown worker type: $WORKER_TYPE"
+        echo ""
+        echo "Usage: $0 [all|high|normal|low|scheduler]"
+        echo ""
+        echo "  all       - Run all workers in parallel (default)"
+        echo "  high      - Run high priority worker only"
+        echo "  normal    - Run normal priority worker only"
+        echo "  low       - Run low priority worker only"
+        echo "  scheduler - Run scheduler worker only"
+        exit 1
+        ;;
+esac

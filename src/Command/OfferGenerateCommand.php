@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\Lead;
 use App\Entity\User;
+use App\Message\GenerateOfferMessage;
 use App\Repository\LeadRepository;
 use App\Repository\ProposalRepository;
 use App\Repository\UserRepository;
@@ -16,6 +17,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Uid\Uuid;
 
 #[AsCommand(
     name: 'app:offer:generate',
@@ -28,6 +31,7 @@ class OfferGenerateCommand extends Command
         private readonly LeadRepository $leadRepository,
         private readonly UserRepository $userRepository,
         private readonly ProposalRepository $proposalRepository,
+        private readonly MessageBusInterface $messageBus,
     ) {
         parent::__construct();
     }
@@ -45,6 +49,7 @@ class OfferGenerateCommand extends Command
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be generated without executing')
             ->addOption('send', 's', InputOption::VALUE_NONE, 'Send immediately after generation (requires approval first)')
             ->addOption('skip-ai', null, InputOption::VALUE_NONE, 'Skip AI personalization')
+            ->addOption('async', null, InputOption::VALUE_NONE, 'Dispatch generation job to the message queue instead of processing synchronously')
         ;
     }
 
@@ -52,9 +57,10 @@ class OfferGenerateCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $dryRun = $input->getOption('dry-run');
+        $async = $input->getOption('async');
 
         if ($input->getOption('batch')) {
-            return $this->processBatch($io, $input, $dryRun);
+            return $this->processBatch($io, $input, $dryRun, $async);
         }
 
         // Single offer generation
@@ -87,7 +93,76 @@ class OfferGenerateCommand extends Command
             return Command::FAILURE;
         }
 
+        // Async mode - dispatch message to queue
+        if ($async) {
+            return $this->dispatchAsync($io, $lead, $user, $input, $dryRun);
+        }
+
         return $this->generateForLead($io, $lead, $user, $input, $dryRun);
+    }
+
+    private function dispatchAsync(
+        SymfonyStyle $io,
+        Lead $lead,
+        User $user,
+        InputInterface $input,
+        bool $dryRun,
+    ): int {
+        $leadId = $lead->getId();
+        $userId = $user->getId();
+
+        if ($leadId === null || $userId === null) {
+            $io->error('Lead or User ID is missing');
+
+            return Command::FAILURE;
+        }
+
+        // Determine recipient email
+        $recipientEmail = $input->getOption('email') ?? $lead->getEmail();
+        if (empty($recipientEmail)) {
+            $io->error('No recipient email available. Use --email to specify one.');
+
+            return Command::FAILURE;
+        }
+
+        // Get proposal ID if specified
+        $proposalId = null;
+        if ($input->getOption('proposal')) {
+            $proposal = $this->proposalRepository->find($input->getOption('proposal'));
+            if (!$proposal) {
+                $io->error(sprintf('Proposal not found: %s', $input->getOption('proposal')));
+
+                return Command::FAILURE;
+            }
+            $proposalId = $proposal->getId();
+        }
+
+        $io->section('Offer Generation (Async Mode)');
+        $io->table([], [
+            ['Lead', $lead->getDomain() ?? $leadId->toRfc4122()],
+            ['User', $user->getCode()],
+            ['Recipient', $recipientEmail],
+            ['Proposal', $proposalId?->toRfc4122() ?? 'none'],
+        ]);
+
+        if ($dryRun) {
+            $io->note('DRY RUN MODE - No message will be dispatched');
+
+            return Command::SUCCESS;
+        }
+
+        $message = new GenerateOfferMessage(
+            leadId: $leadId,
+            userId: $userId,
+            recipientEmail: $recipientEmail,
+            proposalId: $proposalId,
+        );
+
+        $this->messageBus->dispatch($message);
+
+        $io->success('Dispatched offer generation job to the queue');
+
+        return Command::SUCCESS;
     }
 
     private function generateForLead(
@@ -200,7 +275,7 @@ class OfferGenerateCommand extends Command
         }
     }
 
-    private function processBatch(SymfonyStyle $io, InputInterface $input, bool $dryRun): int
+    private function processBatch(SymfonyStyle $io, InputInterface $input, bool $dryRun, bool $async): int
     {
         $userCode = $input->getOption('user');
 
@@ -217,9 +292,16 @@ class OfferGenerateCommand extends Command
             return Command::FAILURE;
         }
 
+        $userId = $user->getId();
+        if ($userId === null) {
+            $io->error('User ID is missing');
+
+            return Command::FAILURE;
+        }
+
         $limit = (int) $input->getOption('limit');
 
-        $io->section('Batch Processing');
+        $io->section($async ? 'Batch Processing (Async Mode)' : 'Batch Processing');
 
         // Find leads with analysis but no offers yet
         $leads = $this->leadRepository->createQueryBuilder('l')
@@ -250,7 +332,7 @@ class OfferGenerateCommand extends Command
                     $lead->getEmail()
                 ));
             }
-            $io->success('Dry run - no offers generated');
+            $io->success('Dry run - no offers ' . ($async ? 'dispatched' : 'generated'));
 
             return Command::SUCCESS;
         }
@@ -260,23 +342,42 @@ class OfferGenerateCommand extends Command
 
         foreach ($leads as $lead) {
             $io->text(sprintf(
-                'Processing: %s (%s)',
+                '%s: %s (%s)',
+                $async ? 'Dispatching' : 'Processing',
                 $lead->getDomain() ?? $lead->getId()?->toRfc4122(),
                 $lead->getEmail()
             ));
 
             try {
-                $options = [
-                    'skip_ai' => $input->getOption('skip-ai'),
-                ];
+                if ($async) {
+                    $leadId = $lead->getId();
+                    if ($leadId === null) {
+                        $io->warning('Skipping: Lead ID is missing');
+                        $failed++;
+                        continue;
+                    }
 
-                $this->offerService->createAndGenerate(
-                    $lead,
-                    $user,
-                    null,
-                    $lead->getEmail(),
-                    $options,
-                );
+                    $message = new GenerateOfferMessage(
+                        leadId: $leadId,
+                        userId: $userId,
+                        recipientEmail: $lead->getEmail(),
+                        proposalId: null,
+                    );
+
+                    $this->messageBus->dispatch($message);
+                } else {
+                    $options = [
+                        'skip_ai' => $input->getOption('skip-ai'),
+                    ];
+
+                    $this->offerService->createAndGenerate(
+                        $lead,
+                        $user,
+                        null,
+                        $lead->getEmail(),
+                        $options,
+                    );
+                }
                 $processed++;
             } catch (\Throwable $e) {
                 $io->warning(sprintf('Failed: %s', $e->getMessage()));
@@ -284,7 +385,7 @@ class OfferGenerateCommand extends Command
             }
         }
 
-        $io->success(sprintf('Processed: %d, Failed: %d', $processed, $failed));
+        $io->success(sprintf('%s: %d, Failed: %d', $async ? 'Dispatched' : 'Processed', $processed, $failed));
 
         return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
