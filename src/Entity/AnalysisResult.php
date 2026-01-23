@@ -71,7 +71,15 @@ class AnalysisResult
      * Issues array - new format stores only {code, evidence}, old format has full data.
      * Use IssueRegistry to get full issue metadata from code.
      *
-     * @var array<int, array{code: string, evidence?: ?string, severity?: string, category?: string, title?: string, description?: string, impact?: ?string}>
+     * @var array<int, array{
+     *     code: string,
+     *     evidence?: ?string,
+     *     severity?: string,
+     *     category?: string,
+     *     title?: string,
+     *     description?: string,
+     *     impact?: ?string
+     * }>
      */
     #[ORM\Column(type: Types::JSON)]
     private array $issues = [];
@@ -168,7 +176,15 @@ class AnalysisResult
      * Get raw issues array as stored in DB.
      * New format: {code, evidence}, old format has full data.
      *
-     * @return array<int, array{code: string, evidence?: ?string, severity?: string, category?: string, title?: string, description?: string, impact?: ?string}>
+     * @return array<int, array{
+     *     code: string,
+     *     evidence?: ?string,
+     *     severity?: string,
+     *     category?: string,
+     *     title?: string,
+     *     description?: string,
+     *     impact?: ?string
+     * }>
      */
     public function getIssues(): array
     {
@@ -259,14 +275,78 @@ class AnalysisResult
             }
 
             // New format - get severity from registry
-            $code = $issue['code'] ?? '';
-
-            return IssueRegistry::getSeverity($code) === IssueSeverity::CRITICAL;
+            return IssueRegistry::getSeverity($issue['code']) === IssueSeverity::CRITICAL;
         }));
     }
 
     public function hasCriticalIssues(): bool
     {
         return $this->getCriticalIssueCount() > 0;
+    }
+
+    /**
+     * Get issues enriched with metadata from IssueRegistry.
+     * Returns full issue data including title, description, severity, impact.
+     *
+     * @return array<int, array{
+     *     code: string,
+     *     evidence: ?string,
+     *     severity: string,
+     *     category: string,
+     *     title: string,
+     *     description: string,
+     *     impact: ?string
+     * }>
+     */
+    public function getEnrichedIssues(): array
+    {
+        $enriched = [];
+
+        foreach ($this->issues as $issue) {
+            $code = $issue['code'];
+            $evidence = $issue['evidence'] ?? null;
+
+            // If the issue already has full data (old format), use it
+            if (isset($issue['title'], $issue['severity'])) {
+                $enriched[] = [
+                    'code' => $code,
+                    'evidence' => $evidence,
+                    'severity' => $issue['severity'],
+                    'category' => $issue['category'] ?? $this->category->value,
+                    'title' => $issue['title'],
+                    'description' => $issue['description'] ?? '',
+                    'impact' => $issue['impact'] ?? null,
+                ];
+                continue;
+            }
+
+            // New format - get metadata from IssueRegistry
+            $def = IssueRegistry::get($code);
+
+            if ($def !== null) {
+                $enriched[] = [
+                    'code' => $code,
+                    'evidence' => $evidence,
+                    'severity' => $def['severity']->value,
+                    'category' => $def['category']->value,
+                    'title' => $def['title'],
+                    'description' => $def['description'],
+                    'impact' => $def['impact'],
+                ];
+            } else {
+                // Fallback for unknown codes
+                $enriched[] = [
+                    'code' => $code,
+                    'evidence' => $evidence,
+                    'severity' => IssueSeverity::OPTIMIZATION->value,
+                    'category' => $this->category->value,
+                    'title' => $code,
+                    'description' => '',
+                    'impact' => null,
+                ];
+            }
+        }
+
+        return $enriched;
     }
 }

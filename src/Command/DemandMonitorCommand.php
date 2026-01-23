@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\DemandSignal;
 use App\Entity\User;
 use App\Enum\DemandSignalSource;
+use App\Enum\Industry;
 use App\Repository\DemandSignalRepository;
 use App\Service\Demand\DemandSignalResult;
 use App\Service\Demand\DemandSignalSourceInterface;
@@ -41,9 +42,10 @@ class DemandMonitorCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('source', 's', InputOption::VALUE_REQUIRED, 'Source to monitor: epoptavka, nen, jobs_cz, prace_cz, all')
+            ->addOption('source', 's', InputOption::VALUE_REQUIRED, 'Source(s) to monitor: poptavky_cz, aaapoptavka, poptavej, nen, jobs_cz, prace_cz, all (comma-separated)')
             ->addOption('limit', 'l', InputOption::VALUE_REQUIRED, 'Maximum signals to discover per source', 50)
-            ->addOption('query', 'q', InputOption::VALUE_REQUIRED, 'Search query')
+            ->addOption('industry', 'i', InputOption::VALUE_REQUIRED, 'Filter by industry: webdesign, eshop, real_estate, etc.')
+            ->addOption('query', null, InputOption::VALUE_REQUIRED, 'Search query')
             ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Category filter')
             ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Region filter')
             ->addOption('min-value', null, InputOption::VALUE_REQUIRED, 'Minimum value/budget filter')
@@ -58,6 +60,7 @@ class DemandMonitorCommand extends Command
 
         $sourceOption = $input->getOption('source');
         $limit = (int) $input->getOption('limit');
+        $industryOption = $input->getOption('industry');
         $query = $input->getOption('query');
         $category = $input->getOption('category');
         $region = $input->getOption('region');
@@ -65,6 +68,17 @@ class DemandMonitorCommand extends Command
         $userId = $input->getOption('user-id');
         $dryRun = $input->getOption('dry-run');
         $expireOld = $input->getOption('expire-old');
+
+        // Parse industry option
+        $industry = null;
+        if ($industryOption !== null) {
+            $industry = Industry::tryFrom($industryOption);
+            if ($industry === null) {
+                $io->error("Invalid industry: {$industryOption}. Valid options: " . implode(', ', array_map(fn ($i) => $i->value, Industry::cases())));
+
+                return Command::FAILURE;
+            }
+        }
 
         // Expire old signals if requested
         if ($expireOld) {
@@ -95,7 +109,7 @@ class DemandMonitorCommand extends Command
         $sourcesToUse = $this->getSourcesToUse($sourceOption);
 
         if (empty($sourcesToUse)) {
-            $io->error('No valid sources specified. Use: epoptavka, nen, jobs_cz, prace_cz, or all');
+            $io->error('No valid sources specified. Use: poptavky_cz, aaapoptavka, poptavej, nen, jobs_cz, prace_cz, or all');
 
             return Command::FAILURE;
         }
@@ -105,11 +119,15 @@ class DemandMonitorCommand extends Command
             'category' => $category,
             'region' => $region,
             'minValue' => $minValue,
+            'industry' => $industry,
         ]);
 
         $io->title('Demand Signal Monitor');
         $io->text("Sources: " . implode(', ', array_map(fn ($s) => $s->value, $sourcesToUse)));
         $io->text("Limit per source: {$limit}");
+        if ($industry !== null) {
+            $io->text("Industry filter: {$industry->getLabel()}");
+        }
         if ($dryRun) {
             $io->note('DRY RUN - signals will not be persisted');
         }
@@ -216,10 +234,28 @@ class DemandMonitorCommand extends Command
     {
         if ($option === null || $option === 'all') {
             return [
-                DemandSignalSource::EPOPTAVKA,
+                // B2B demand portals
+                DemandSignalSource::POPTAVKY_CZ,
+                DemandSignalSource::AAAPOPTAVKA,
+                DemandSignalSource::POPTAVEJ,
+                // Public tenders (requires Browserless)
                 DemandSignalSource::NEN,
+                // Job portals
                 DemandSignalSource::JOBS_CZ,
+                DemandSignalSource::PRACE_CZ,
             ];
+        }
+
+        // Support comma-separated list
+        if (str_contains($option, ',')) {
+            $sources = [];
+            foreach (explode(',', $option) as $sourceStr) {
+                $source = DemandSignalSource::tryFrom(trim($sourceStr));
+                if ($source !== null) {
+                    $sources[] = $source;
+                }
+            }
+            return $sources;
         }
 
         $source = DemandSignalSource::tryFrom($option);

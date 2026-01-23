@@ -26,6 +26,29 @@ class EmailExtractor implements ContactExtractorInterface
         'localhost',
     ];
 
+    // File extensions that look like TLDs but are actually image/asset files
+    // These often appear in src attributes like "image@2x.webp"
+    private const IGNORED_EXTENSIONS = [
+        'png',
+        'jpg',
+        'jpeg',
+        'gif',
+        'webp',
+        'svg',
+        'ico',
+        'bmp',
+        'tiff',
+        'avif',
+        'css',
+        'js',
+        'map',
+        'woff',
+        'woff2',
+        'ttf',
+        'eot',
+        'otf',
+    ];
+
     // Priority prefixes (higher index = lower priority)
     private const PRIORITY_PREFIXES = [
         // Highest priority - business/general contact
@@ -52,8 +75,12 @@ class EmailExtractor implements ContactExtractorInterface
             }
         }
 
-        // Extract from content
-        if (preg_match_all(self::EMAIL_PATTERN, $html, $contentMatches)) {
+        // Strip non-content elements that may contain asset filenames with @ symbols
+        // (e.g., retina images like "logo@2x.webp")
+        $cleanedHtml = $this->stripNonContentElements($html);
+
+        // Extract from cleaned content
+        if (preg_match_all(self::EMAIL_PATTERN, $cleanedHtml, $contentMatches)) {
             foreach ($contentMatches[0] as $email) {
                 $email = $this->cleanEmail($email);
                 if ($this->isValidEmail($email)) {
@@ -67,6 +94,35 @@ class EmailExtractor implements ContactExtractorInterface
         $emails = $this->sortByPriority($emails);
 
         return array_values($emails);
+    }
+
+    /**
+     * Remove HTML elements that typically contain asset URLs, not email addresses.
+     */
+    private function stripNonContentElements(string $html): string
+    {
+        // Remove <script> tags and content
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html) ?? $html;
+
+        // Remove <style> tags and content
+        $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', '', $html) ?? $html;
+
+        // Remove <noscript> tags and content
+        $html = preg_replace('/<noscript\b[^>]*>.*?<\/noscript>/is', '', $html) ?? $html;
+
+        // Remove src attributes from img tags (retina images often have @2x in filename)
+        $html = preg_replace('/<img\b[^>]*>/is', '', $html) ?? $html;
+
+        // Remove srcset attributes (also contain image filenames)
+        $html = preg_replace('/\bsrcset\s*=\s*["\'][^"\']*["\']/is', '', $html) ?? $html;
+
+        // Remove background-image CSS (may contain image URLs)
+        $html = preg_replace('/background(?:-image)?\s*:\s*url\([^)]+\)/is', '', $html) ?? $html;
+
+        // Remove data-* attributes that often contain asset URLs
+        $html = preg_replace('/\bdata-(?:src|background|image|srcset)\s*=\s*["\'][^"\']*["\']/is', '', $html) ?? $html;
+
+        return $html;
     }
 
     private function cleanEmail(string $email): string
@@ -103,6 +159,20 @@ class EmailExtractor implements ContactExtractorInterface
             if ($domain === $ignoredDomain || str_ends_with($domain, '.' . $ignoredDomain)) {
                 return false;
             }
+        }
+
+        // Check if "domain" is actually a file extension (e.g., image@2x.webp)
+        // Extract the TLD from the domain
+        $domainParts = explode('.', $domain);
+        $tld = end($domainParts);
+        if (in_array($tld, self::IGNORED_EXTENSIONS, true)) {
+            return false;
+        }
+
+        // Skip domains that look like filenames (contain mostly digits before extension)
+        // e.g., "2x.57766654.webp" or "123456.png"
+        if (preg_match('/^\d+\.\w+$/', $domain) || preg_match('/^[\dx]+\.\d+\.\w+$/', $domain)) {
+            return false;
         }
 
         // Skip obvious fake patterns

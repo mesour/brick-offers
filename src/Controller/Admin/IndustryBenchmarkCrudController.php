@@ -40,9 +40,7 @@ class IndustryBenchmarkCrudController extends AbstractTenantCrudController
     {
         return $actions
             ->add(Crud::PAGE_INDEX, Action::DETAIL)
-            ->setPermission(Action::NEW, User::PERMISSION_SETTINGS_WRITE)
-            ->setPermission(Action::EDIT, User::PERMISSION_SETTINGS_WRITE)
-            ->setPermission(Action::DELETE, User::PERMISSION_SETTINGS_WRITE);
+            ->disable(Action::NEW, Action::EDIT, Action::DELETE); // Benchmarks are calculated by the system
     }
 
     public function configureFilters(Filters $filters): Filters

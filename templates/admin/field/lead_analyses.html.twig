@@ -98,10 +98,31 @@
                                                             {{ result.errorMessage }}
                                                         </div>
                                                     {% elseif resultCompleted %}
-                                                        {% set issues = result.issues %}
+                                                        {# Summary section for rawData display #}
+                                                        {% set summaryFields = result.category.summaryFields %}
+                                                        {% set rawData = result.rawData %}
+
+                                                        {% if summaryFields is not empty and rawData is not empty %}
+                                                            <div class="mb-2 p-2 bg-body-secondary rounded">
+                                                                <h6 class="text-muted mb-2" style="font-size: 0.8rem;">
+                                                                    <i class="fa fa-info-circle"></i> Shrnutí
+                                                                </h6>
+                                                                <dl class="row mb-0" style="font-size: 0.85rem;">
+                                                                    {% for field in summaryFields %}
+                                                                        {% set value = analyzer_get_value(rawData, field.key) %}
+                                                                        {% if value is not null %}
+                                                                            <dt class="col-sm-4 text-muted fw-normal">{{ field.label }}</dt>
+                                                                            <dd class="col-sm-8 mb-1">{{ analyzer_format_value(value, field) }}</dd>
+                                                                        {% endif %}
+                                                                    {% endfor %}
+                                                                </dl>
+                                                            </div>
+                                                        {% endif %}
+
+                                                        {% set issues = result.enrichedIssues %}
                                                         {% if issues is not empty %}
                                                             <table class="table table-sm table-striped mb-0">
-                                                                <thead class="table-light">
+                                                                <thead class="table-secondary">
                                                                     <tr>
                                                                         <th style="width: 80px;">Závažnost</th>
                                                                         <th>Problém</th>
@@ -112,6 +133,8 @@
                                                                         {% set severity = issue.severity ?? 'info' %}
                                                                         {% set severityClass = {
                                                                             'critical': 'danger',
+                                                                            'recommended': 'warning',
+                                                                            'optimization': 'info',
                                                                             'high': 'warning',
                                                                             'medium': 'info',
                                                                             'low': 'secondary',
@@ -127,6 +150,9 @@
                                                                                 <strong>{{ issue.title ?? issue.code }}</strong>
                                                                                 {% if issue.description is defined and issue.description %}
                                                                                     <br><small class="text-muted">{{ issue.description }}</small>
+                                                                                {% endif %}
+                                                                                {% if issue.impact is defined and issue.impact %}
+                                                                                    <br><small class="text-warning"><i class="fa fa-exclamation-circle"></i> {{ issue.impact }}</small>
                                                                                 {% endif %}
                                                                             </td>
                                                                         </tr>

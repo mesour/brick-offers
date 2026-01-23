@@ -87,14 +87,28 @@ class GoogleDiscoverySource extends AbstractDiscoverySource
             $data = $response->toArray();
 
             if (!isset($data['items']) || !is_array($data['items'])) {
+                $this->logger->debug('Google Search returned no items', [
+                    'query' => $query,
+                    'total_results' => $data['searchInformation']['totalResults'] ?? 'unknown',
+                ]);
+
                 return [];
             }
 
+            $this->logger->debug('Google Search returned items', [
+                'query' => $query,
+                'items_count' => count($data['items']),
+                'total_results' => $data['searchInformation']['totalResults'] ?? 'unknown',
+            ]);
+
             $results = [];
+            $skipped = 0;
             foreach ($data['items'] as $item) {
                 $url = $item['link'] ?? null;
 
                 if (!$url || !$this->isValidWebsiteUrl($url)) {
+                    $skipped++;
+                    $this->logger->debug('Skipped invalid URL from Google', ['url' => $url]);
                     continue;
                 }
 
@@ -106,6 +120,12 @@ class GoogleDiscoverySource extends AbstractDiscoverySource
                     'source_type' => 'google_search',
                 ]);
             }
+
+            $this->logger->debug('Google Search page processed', [
+                'query' => $query,
+                'valid_results' => count($results),
+                'skipped' => $skipped,
+            ]);
 
             return $results;
         } catch (\Throwable $e) {

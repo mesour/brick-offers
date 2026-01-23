@@ -48,7 +48,7 @@ class DemandSignalSubscriptionCrudController extends AbstractTenantCrudControlle
 
         yield AssociationField::new('demandSignal')
             ->setLabel('Signál')
-            ->setRequired(true);
+            ->setFormTypeOption('disabled', true); // Read-only - subscriptions are auto-created
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
@@ -73,8 +73,7 @@ class DemandSignalSubscriptionCrudController extends AbstractTenantCrudControlle
 
         yield AssociationField::new('convertedLead')
             ->setLabel('Konvertovaný lead')
-            ->hideOnIndex()
-            ->hideOnForm();
+            ->hideOnIndex();
 
         yield DateTimeField::new('convertedAt')
             ->setLabel('Konvertováno')

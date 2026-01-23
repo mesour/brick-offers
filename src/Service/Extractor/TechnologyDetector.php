@@ -6,51 +6,16 @@ namespace App\Service\Extractor;
 
 class TechnologyDetector
 {
-    // CMS detection patterns
+    // CMS detection patterns - ordered from most specific to least specific
     private const CMS_PATTERNS = [
-        'wordpress' => [
-            'patterns' => ['/wp-content/', '/wp-includes/', '/wp-json/', 'wp-emoji'],
-            'meta' => '/generator.*WordPress/i',
-            'headers' => ['x-powered-by' => '/PHP/i'],
+        // Czech CMS - check these first (more specific)
+        'vismo' => [
+            'patterns' => ['vismo.cz', 'redakční systém vismo', 'redakcni system vismo', 'cms vismo'],
+            'meta' => '/generator.*Vismo/i',
         ],
         'shoptet' => [
             'patterns' => ['/user/documents/', 'shoptet.cz', 'cdn.myshoptet.com'],
             'meta' => '/generator.*Shoptet/i',
-        ],
-        'wix' => [
-            'patterns' => ['static.wixstatic.com', '_wix_', 'wix.com', 'wixpress.com'],
-            'meta' => '/generator.*Wix/i',
-        ],
-        'squarespace' => [
-            'patterns' => ['squarespace.com', 'sqsp.net', 'static1.squarespace.com'],
-            'meta' => '/generator.*Squarespace/i',
-        ],
-        'prestashop' => [
-            'patterns' => ['/modules/', '/themes/', 'prestashop'],
-            'meta' => '/generator.*PrestaShop/i',
-        ],
-        'webnode' => [
-            'patterns' => ['webnode.cz', 'webnode.com', 'webnode.page'],
-        ],
-        'shopify' => [
-            'patterns' => ['cdn.shopify.com', 'myshopify.com', 'shopify.com'],
-            'meta' => '/generator.*Shopify/i',
-        ],
-        'joomla' => [
-            'patterns' => ['/media/jui/', '/media/system/', 'joomla'],
-            'meta' => '/generator.*Joomla/i',
-        ],
-        'drupal' => [
-            'patterns' => ['/sites/default/', '/sites/all/', 'drupal.js'],
-            'meta' => '/generator.*Drupal/i',
-            'headers' => ['x-drupal-cache' => '/.*/'],
-        ],
-        'magento' => [
-            'patterns' => ['/static/frontend/', 'mage/cookies.js', 'Magento_'],
-            'headers' => ['x-magento-' => '/.*/'],
-        ],
-        'opencart' => [
-            'patterns' => ['catalog/view/javascript', 'index.php?route='],
         ],
         'eshop-rychle' => [
             'patterns' => ['eshop-rychle.cz', 'cdn.eshop-rychle.cz'],
@@ -66,6 +31,47 @@ class TechnologyDetector
         ],
         'webzdarma' => [
             'patterns' => ['webzdarma.cz'],
+        ],
+        'webnode' => [
+            'patterns' => ['webnode.cz', 'webnode.com', 'webnode.page'],
+        ],
+        // International CMS
+        'wordpress' => [
+            'patterns' => ['/wp-content/', '/wp-includes/', '/wp-json/', 'wp-emoji'],
+            'meta' => '/generator.*WordPress/i',
+        ],
+        'wix' => [
+            'patterns' => ['static.wixstatic.com', '_wix_', 'wixsite.com', 'wixpress.com'],
+            'meta' => '/generator.*Wix/i',
+        ],
+        'squarespace' => [
+            'patterns' => ['squarespace.com', 'sqsp.net', 'static1.squarespace.com'],
+            'meta' => '/generator.*Squarespace/i',
+        ],
+        'shopify' => [
+            'patterns' => ['cdn.shopify.com', 'myshopify.com', 'shopify.com'],
+            'meta' => '/generator.*Shopify/i',
+        ],
+        'joomla' => [
+            'patterns' => ['/media/jui/', '/media/system/js/'],
+            'meta' => '/generator.*Joomla/i',
+        ],
+        'drupal' => [
+            'patterns' => ['/sites/default/files/', '/sites/all/modules/', 'drupal.js', 'Drupal.settings'],
+            'meta' => '/generator.*Drupal/i',
+            'headers' => ['x-drupal-cache' => '/.*/'],
+        ],
+        'magento' => [
+            'patterns' => ['/static/frontend/', 'mage/cookies.js', 'Magento_'],
+            'headers' => ['x-magento-' => '/.*/'],
+        ],
+        'opencart' => [
+            'patterns' => ['catalog/view/javascript/common.js', 'index.php?route=product'],
+        ],
+        // PrestaShop - more specific patterns to avoid false positives
+        'prestashop' => [
+            'patterns' => ['/modules/ps_', '/themes/classic/', 'prestashop.com', 'PrestaShop'],
+            'meta' => '/generator.*PrestaShop/i',
         ],
     ];
 

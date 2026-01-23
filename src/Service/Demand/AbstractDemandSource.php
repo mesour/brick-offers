@@ -95,21 +95,21 @@ abstract class AbstractDemandSource implements DemandSignalSourceInterface
         $text = mb_strtolower($text);
 
         $patterns = [
-            Industry::WEBDESIGN => ['web', 'website', 'webov', 'internetov', 'portál', 'aplikac', 'software'],
-            Industry::ESHOP => ['e-shop', 'eshop', 'obchod', 'prodej', 'nákup', 'zboží'],
-            Industry::REAL_ESTATE => ['nemovitost', 'reality', 'byt', 'dům', 'stavb'],
-            Industry::AUTOMOBILE => ['auto', 'vozidl', 'doprav', 'servis vozid'],
-            Industry::RESTAURANT => ['restaurac', 'gastronomie', 'jídl', 'kuchyn', 'catering'],
-            Industry::MEDICAL => ['zdravot', 'lékař', 'nemocnic', 'klinik', 'medicín'],
-            Industry::LEGAL => ['práv', 'advokát', 'právník', 'notář', 'soud'],
-            Industry::FINANCE => ['financ', 'účetn', 'daň', 'pojišt', 'bank', 'úvěr'],
-            Industry::EDUCATION => ['vzdělá', 'škol', 'kurz', 'školení', 'výuk'],
+            ['industry' => Industry::WEBDESIGN, 'keywords' => ['web', 'website', 'webov', 'internetov', 'portál', 'aplikac', 'software']],
+            ['industry' => Industry::ESHOP, 'keywords' => ['e-shop', 'eshop', 'obchod', 'prodej', 'nákup', 'zboží']],
+            ['industry' => Industry::REAL_ESTATE, 'keywords' => ['nemovitost', 'reality', 'byt', 'dům', 'stavb']],
+            ['industry' => Industry::AUTOMOBILE, 'keywords' => ['auto', 'vozidl', 'doprav', 'servis vozid']],
+            ['industry' => Industry::RESTAURANT, 'keywords' => ['restaurac', 'gastronomie', 'jídl', 'kuchyn', 'catering']],
+            ['industry' => Industry::MEDICAL, 'keywords' => ['zdravot', 'lékař', 'nemocnic', 'klinik', 'medicín']],
+            ['industry' => Industry::LEGAL, 'keywords' => ['práv', 'advokát', 'právník', 'notář', 'soud']],
+            ['industry' => Industry::FINANCE, 'keywords' => ['financ', 'účetn', 'daň', 'pojišt', 'bank', 'úvěr']],
+            ['industry' => Industry::EDUCATION, 'keywords' => ['vzdělá', 'škol', 'kurz', 'školení', 'výuk']],
         ];
 
-        foreach ($patterns as $industry => $keywords) {
-            foreach ($keywords as $keyword) {
+        foreach ($patterns as $pattern) {
+            foreach ($pattern['keywords'] as $keyword) {
                 if (str_contains($text, $keyword)) {
-                    return $industry;
+                    return $pattern['industry'];
                 }
             }
         }

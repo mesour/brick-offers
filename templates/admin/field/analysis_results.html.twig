@@ -30,11 +30,18 @@
                                 {% if isCompleted %}
                                     {% set scoreClass = result.score >= 80 ? 'success' : (result.score >= 50 ? 'warning' : 'danger') %}
                                     <span class="badge bg-{{ scoreClass }} me-2">Skóre: {{ result.score }}</span>
-                                    {% if result.issueCount > 0 %}
-                                        <span class="badge bg-warning text-dark me-2">{{ result.issueCount }} problémů</span>
-                                    {% endif %}
+
                                     {% if result.criticalIssueCount > 0 %}
-                                        <span class="badge bg-danger">{{ result.criticalIssueCount }} kritických</span>
+                                        <span class="badge bg-danger me-2">
+                                            <i class="fa fa-exclamation-triangle"></i> {{ result.criticalIssueCount }} kritických
+                                        </span>
+                                    {% endif %}
+
+                                    {% set nonCriticalCount = result.issueCount - result.criticalIssueCount %}
+                                    {% if nonCriticalCount > 0 %}
+                                        <span class="badge bg-warning text-dark">{{ nonCriticalCount }} dalších</span>
+                                    {% elseif result.issueCount == 0 %}
+                                        <span class="badge bg-success"><i class="fa fa-check"></i> OK</span>
                                     {% endif %}
                                 {% endif %}
                             </div>
@@ -69,12 +76,33 @@
                                 </div>
                             </div>
 
-                            {% set issues = result.issues %}
+                            {# Summary section for rawData display #}
+                            {% set summaryFields = result.category.summaryFields %}
+                            {% set rawData = result.rawData %}
+
+                            {% if summaryFields is not empty and rawData is not empty %}
+                                <div class="mb-3 p-2 bg-body-secondary rounded">
+                                    <h6 class="text-muted mb-2">
+                                        <i class="fa fa-info-circle"></i> Shrnutí
+                                    </h6>
+                                    <dl class="row mb-0">
+                                        {% for field in summaryFields %}
+                                            {% set value = analyzer_get_value(rawData, field.key) %}
+                                            {% if value is not null %}
+                                                <dt class="col-sm-4 col-md-3 text-muted fw-normal">{{ field.label }}</dt>
+                                                <dd class="col-sm-8 col-md-9 mb-1">{{ analyzer_format_value(value, field) }}</dd>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </dl>
+                                </div>
+                            {% endif %}
+
+                            {% set issues = result.enrichedIssues %}
                             {% if issues is not empty %}
                                 <h6 class="mt-3 mb-2">Nalezené problémy:</h6>
                                 <div class="table-responsive">
                                     <table class="table table-sm table-striped">
-                                        <thead class="table-light">
+                                        <thead class="table-secondary">
                                             <tr>
                                                 <th style="width: 100px;">Závažnost</th>
                                                 <th>Kód</th>

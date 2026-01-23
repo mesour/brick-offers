@@ -124,4 +124,74 @@ enum IssueCategory: string
             default => null,
         };
     }
+
+    /**
+     * Get summary fields configuration for displaying rawData in admin.
+     *
+     * @return array<array{
+     *     key: string,
+     *     label: string,
+     *     type: string,
+     *     badgeMap?: array<string, string>,
+     *     suffix?: string,
+     *     maxLength?: int,
+     *     decimals?: int
+     * }>
+     */
+    public function getSummaryFields(): array
+    {
+        return match ($this) {
+            self::ESHOP_DETECTION => [
+                ['key' => 'isEshop', 'label' => 'E-shop', 'type' => 'boolean'],
+                ['key' => 'confidence', 'label' => 'Spolehlivost', 'type' => 'badge', 'badgeMap' => [
+                    'high' => 'success', 'medium' => 'warning', 'low' => 'secondary',
+                ]],
+                ['key' => 'signals.platform', 'label' => 'Platforma', 'type' => 'text'],
+            ],
+            self::CMS_QUALITY => [
+                ['key' => 'detectedCms', 'label' => 'CMS', 'type' => 'text'],
+                ['key' => 'version', 'label' => 'Verze', 'type' => 'text'],
+                ['key' => 'qualityLevel', 'label' => 'Kvalita', 'type' => 'badge', 'badgeMap' => [
+                    'excellent' => 'success', 'good' => 'info', 'fair' => 'warning', 'poor' => 'danger',
+                ]],
+                ['key' => 'qualityScore', 'label' => 'Skóre', 'type' => 'number', 'suffix' => '/100'],
+                ['key' => 'needsRedesign', 'label' => 'Potřebuje redesign', 'type' => 'boolean'],
+            ],
+            self::DESIGN_MODERNITY => [
+                ['key' => 'modernityLevel', 'label' => 'Modernost', 'type' => 'badge', 'badgeMap' => [
+                    'excellent' => 'success', 'good' => 'info', 'fair' => 'warning', 'poor' => 'danger',
+                ]],
+                ['key' => 'scores.final', 'label' => 'Skóre', 'type' => 'number'],
+            ],
+            self::PERFORMANCE => [
+                ['key' => 'metrics.lcp', 'label' => 'LCP', 'type' => 'number', 'suffix' => ' ms'],
+                ['key' => 'metrics.fcp', 'label' => 'FCP', 'type' => 'number', 'suffix' => ' ms'],
+                ['key' => 'metrics.ttfb', 'label' => 'TTFB', 'type' => 'number', 'suffix' => ' ms'],
+            ],
+            self::HTTP => [
+                ['key' => 'checks.ssl.valid', 'label' => 'SSL platný', 'type' => 'boolean'],
+                [
+                    'key' => 'checks.ssl.expiresDays',
+                    'label' => 'SSL vyprší za',
+                    'type' => 'number',
+                    'suffix' => ' dní',
+                ],
+            ],
+            self::SEO => [
+                ['key' => 'checks.title.title', 'label' => 'Title', 'type' => 'text', 'maxLength' => 70],
+                [
+                    'key' => 'checks.metaDescription.description',
+                    'label' => 'Description',
+                    'type' => 'text',
+                    'maxLength' => 100,
+                ],
+                ['key' => 'checks.sitemap.exists', 'label' => 'Sitemap', 'type' => 'boolean'],
+            ],
+            self::SECURITY => [
+                ['key' => 'headersFound', 'label' => 'Nalezené hlavičky', 'type' => 'count'],
+                ['key' => 'headersMissing', 'label' => 'Chybějící hlavičky', 'type' => 'count'],
+            ],
+            default => [],
+        };
+    }
 }

@@ -280,9 +280,10 @@ class MarketWatchFilter
      */
     public function matches(DemandSignal $signal): bool
     {
-        // Check industry
-        if (!empty($this->industries) && $signal->getIndustry() !== null) {
-            if (!in_array($signal->getIndustry()->value, $this->industries, true)) {
+        // Check industry - use user's industry setting
+        $userIndustry = $this->user->getIndustry();
+        if ($userIndustry !== null && $signal->getIndustry() !== null) {
+            if ($signal->getIndustry() !== $userIndustry) {
                 return false;
             }
         }

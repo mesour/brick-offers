@@ -4,18 +4,14 @@ declare(strict_types=1);
 
 namespace App\Controller\Admin;
 
-use App\Entity\Analysis;
-use App\Entity\AnalysisResult;
 use App\Entity\AnalysisSnapshot;
 use App\Entity\Company;
 use App\Entity\CompetitorSnapshot;
-use App\Entity\DemandSignal;
 use App\Entity\DemandSignalSubscription;
 use App\Entity\DiscoveryProfile;
 use App\Entity\EmailBlacklist;
 use App\Entity\EmailLog;
 use App\Entity\EmailTemplate;
-use App\Entity\IndustryBenchmark;
 use App\Entity\Lead;
 use App\Entity\MarketWatchFilter;
 use App\Entity\MonitoredDomain;
@@ -78,19 +74,19 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToCrud('Email Log', 'fa fa-paper-plane', EmailLog::class);
         yield MenuItem::linkToCrud('Blacklist', 'fa fa-ban', EmailBlacklist::class);
 
-        yield MenuItem::section('Monitoring');
-        yield MenuItem::linkToCrud('Monitored Domains', 'fa fa-eye', MonitoredDomain::class)
-            ->setPermission('ROLE_SUPER_ADMIN');
-        yield MenuItem::linkToCrud('Domain Subscriptions', 'fa fa-bell', MonitoredDomainSubscription::class);
-        yield MenuItem::linkToCrud('Competitor Snapshots', 'fa fa-binoculars', CompetitorSnapshot::class);
-        yield MenuItem::linkToCrud('Demand Signals', 'fa fa-signal', DemandSignal::class);
-        yield MenuItem::linkToCrud('Signal Subscriptions', 'fa fa-rss', DemandSignalSubscription::class);
-        yield MenuItem::linkToCrud('Market Watch Filters', 'fa fa-filter', MarketWatchFilter::class);
+        yield MenuItem::section('Sledování konkurence');
+        yield MenuItem::linkToCrud('Monitorované domény', 'fa fa-eye', MonitoredDomain::class)
+            ->setPermission(User::PERMISSION_COMPETITORS_MANAGE);
+        yield MenuItem::linkToCrud('Moje odběry', 'fa fa-bell', MonitoredDomainSubscription::class);
+        yield MenuItem::linkToCrud('Snapshoty konkurence', 'fa fa-binoculars', CompetitorSnapshot::class);
 
-        yield MenuItem::section('Configuration');
-        yield MenuItem::linkToCrud('Users', 'fa fa-users', User::class)
+        yield MenuItem::section('Sledování poptávek');
+        yield MenuItem::linkToCrud('Filtry sledování', 'fa fa-filter', MarketWatchFilter::class);
+        yield MenuItem::linkToCrud('Moje odběry', 'fa fa-rss', DemandSignalSubscription::class);
+
+        yield MenuItem::section('Nastavení');
+        yield MenuItem::linkToCrud('Uživatelé', 'fa fa-users', User::class)
             ->setPermission(User::PERMISSION_USERS_READ);
-        yield MenuItem::linkToCrud('Industry Benchmarks', 'fa fa-chart-line', IndustryBenchmark::class);
 
         yield MenuItem::section('');
         yield MenuItem::linkToLogout('Logout', 'fa fa-sign-out');

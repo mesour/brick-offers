@@ -9,12 +9,71 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
+/**
+ * Discovery source for Firmy.cz business directory.
+ *
+ * Firmy.cz is a React SPA with aggressive bot detection. Traditional pagination
+ * via URL parameters doesn't work for search results. However, category pages
+ * support pagination via ?page=N parameter.
+ *
+ * Query formats:
+ * - "webdesign" - search query (limited to ~15 SSR results, no pagination)
+ * - "category:/Remesla-a-sluzby/IT" - category browsing with pagination
+ * - "categories:IT,Marketing" - multiple categories (iterates through subcategories)
+ */
 #[AutoconfigureTag('app.discovery_source')]
 class FirmyCzDiscoverySource extends AbstractDiscoverySource
 {
     private const BASE_URL = 'https://www.firmy.cz';
-    private const RESULTS_PER_PAGE = 25;
+    private const RESULTS_PER_PAGE = 15;
     private const MAX_RETRIES = 3;
+    private const MAX_PAGES_PER_CATEGORY = 10;
+
+    /**
+     * Common category paths for different industries.
+     * Use with "categories:" prefix, e.g., "categories:IT" or "categories:stavebnictvi".
+     *
+     * @var array<string, array<string>>
+     */
+    private const CATEGORY_GROUPS = [
+        'IT' => [
+            '/Remesla-a-sluzby/Informacni-technologie/Tvorba-webovych-stranek',
+            '/Remesla-a-sluzby/Informacni-technologie/Sprava-IT-systemu',
+            '/Remesla-a-sluzby/Informacni-technologie/Programovani-software',
+            '/Remesla-a-sluzby/Informacni-technologie/Graficke-studio',
+        ],
+        'marketing' => [
+            '/Remesla-a-sluzby/Reklamni-a-marketingove-sluzby/Reklamni-agentury',
+            '/Remesla-a-sluzby/Reklamni-a-marketingove-sluzby/Marketing',
+            '/Remesla-a-sluzby/Reklamni-a-marketingove-sluzby/PR-agentury',
+        ],
+        'stavebnictvi' => [
+            '/Remesla-a-sluzby/Stavebnictvi/Stavebni-firmy',
+            '/Remesla-a-sluzby/Stavebnictvi/Zednici',
+            '/Remesla-a-sluzby/Stavebnictvi/Tesari-pokryvaci',
+            '/Remesla-a-sluzby/Stavebnictvi/Instalaterske-prace',
+        ],
+        'auto' => [
+            '/Auto-moto/Autoservisy-pneuservisy/Autoservisy',
+            '/Auto-moto/Autoservisy-pneuservisy/Pneuservisy',
+            '/Auto-moto/Prodej-aut/Autobazary',
+        ],
+        'restaurace' => [
+            '/Restaurace/Restaurace',
+            '/Restaurace/Pizzerie',
+            '/Restaurace/Asijska-kuchyne',
+            '/Restaurace/Fast-food',
+        ],
+        'zdravotnictvi' => [
+            '/Zdravotnictvi/Lekari/Prakticky-lekar',
+            '/Zdravotnictvi/Lekari/Zubni-lekar',
+            '/Zdravotnictvi/Lekarny',
+        ],
+        'reality' => [
+            '/Reality/Realitni-kancelare',
+            '/Reality/Sprava-nemovitosti',
+        ],
+    ];
 
     public function __construct(
         HttpClientInterface $httpClient,
@@ -35,56 +94,190 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
     }
 
     /**
+     * Discover businesses from Firmy.cz.
+     *
+     * Query formats:
+     * - "webdesign" - search query (limited to ~15 results, no pagination)
+     * - "category:/Remesla-a-sluzby/IT/Webdesign" - specific category with pagination
+     * - "categories:IT" - predefined category group (see CATEGORY_GROUPS)
+     *
      * @return array<DiscoveryResult>
      */
     public function discover(string $query, int $limit = 50): array
     {
+        // Category group: "categories:IT" or "categories:stavebnictvi"
+        if (str_starts_with($query, 'categories:')) {
+            $groupName = strtolower(trim(substr($query, 11)));
+
+            return $this->discoverFromCategoryGroup($groupName, $limit);
+        }
+
+        // Single category: "category:/Remesla-a-sluzby/IT"
+        if (str_starts_with($query, 'category:')) {
+            $categoryPath = trim(substr($query, 9));
+
+            return $this->discoverFromCategory($categoryPath, $limit);
+        }
+
+        // Default: search query (limited, no pagination)
+        return $this->discoverFromSearch($query, $limit);
+    }
+
+    /**
+     * Discover from a predefined category group.
+     *
+     * @return array<DiscoveryResult>
+     */
+    private function discoverFromCategoryGroup(string $groupName, int $limit): array
+    {
+        $categories = self::CATEGORY_GROUPS[$groupName] ?? null;
+
+        if ($categories === null) {
+            $this->logger->error('Firmy.cz: Unknown category group', [
+                'group' => $groupName,
+                'available' => array_keys(self::CATEGORY_GROUPS),
+            ]);
+
+            return [];
+        }
+
         $results = [];
-        $page = 1;
-        $maxPages = (int) ceil($limit / self::RESULTS_PER_PAGE);
+        $perCategoryLimit = (int) ceil($limit / count($categories));
+        $seenDomains = [];
 
-        for ($i = 0; $i < $maxPages && count($results) < $limit; $i++) {
-            $pageResults = $this->fetchPage($query, $page);
-
-            if (empty($pageResults)) {
+        foreach ($categories as $categoryPath) {
+            if (count($results) >= $limit) {
                 break;
             }
 
-            $results = array_merge($results, $pageResults);
+            $categoryResults = $this->discoverFromCategory($categoryPath, $perCategoryLimit);
+
+            foreach ($categoryResults as $result) {
+                if (count($results) >= $limit) {
+                    break;
+                }
+
+                // Deduplicate by domain
+                if (!isset($seenDomains[$result->domain])) {
+                    $seenDomains[$result->domain] = true;
+                    $results[] = $result;
+                }
+            }
+
+            $this->rateLimit();
+        }
+
+        $this->logger->info('Firmy.cz: Category group discovery completed', [
+            'group' => $groupName,
+            'categories_count' => count($categories),
+            'results' => count($results),
+        ]);
+
+        return $results;
+    }
+
+    /**
+     * Discover from a specific category with pagination.
+     *
+     * @return array<DiscoveryResult>
+     */
+    private function discoverFromCategory(string $categoryPath, int $limit): array
+    {
+        $results = [];
+        $page = 1;
+        $maxPages = min(self::MAX_PAGES_PER_CATEGORY, (int) ceil($limit / self::RESULTS_PER_PAGE));
+        $seenDomains = [];
+
+        // Normalize category path
+        if (!str_starts_with($categoryPath, '/')) {
+            $categoryPath = '/' . $categoryPath;
+        }
+
+        for ($i = 0; $i < $maxPages && count($results) < $limit; $i++) {
+            $url = self::BASE_URL . $categoryPath;
+            if ($page > 1) {
+                $url .= '?page=' . $page;
+            }
+
+            $html = $this->fetchWithRetry($url);
+
+            if ($html === null) {
+                break;
+            }
+
+            $pageResults = $this->parseSearchResults($html, $categoryPath);
+
+            if (empty($pageResults)) {
+                $this->logger->debug('Firmy.cz: No more results in category', [
+                    'category' => $categoryPath,
+                    'page' => $page,
+                ]);
+
+                break;
+            }
+
+            foreach ($pageResults as $result) {
+                if (count($results) >= $limit) {
+                    break;
+                }
+
+                // Deduplicate by domain
+                if (!isset($seenDomains[$result->domain])) {
+                    $seenDomains[$result->domain] = true;
+                    $results[] = $result;
+                }
+            }
+
             $page++;
 
-            if ($i < $maxPages - 1) {
+            if ($i < $maxPages - 1 && count($results) < $limit) {
                 $this->rateLimit();
             }
         }
+
+        $this->logger->debug('Firmy.cz: Category discovery completed', [
+            'category' => $categoryPath,
+            'pages_fetched' => $page - 1,
+            'results' => count($results),
+        ]);
 
         return array_slice($results, 0, $limit);
     }
 
     /**
-     * Fetch page using native curl to bypass bot detection.
-     * Firmy.cz has aggressive bot fingerprinting that affects Symfony's HTTP Client.
-     *
-     * Note: Firmy.cz is now a React SPA and doesn't support traditional pagination
-     * via URL parameters. Only the first page of server-rendered results is available.
+     * Discover from search query (limited to first page, ~15 results).
      *
      * @return array<DiscoveryResult>
      */
-    private function fetchPage(string $query, int $page): array
+    private function discoverFromSearch(string $query, int $limit): array
     {
-        // Firmy.cz doesn't support page parameter anymore (React SPA)
-        // Only fetch first page which contains ~15 server-rendered results
-        if ($page > 1) {
+        $this->logger->info('Firmy.cz: Using search query (limited to ~15 results)', [
+            'query' => $query,
+            'hint' => 'For more results, use category: or categories: prefix',
+        ]);
+
+        $url = sprintf('%s/?q=%s', self::BASE_URL, urlencode($query));
+        $html = $this->fetchWithRetry($url);
+
+        if ($html === null) {
             return [];
         }
 
-        $url = sprintf('%s/?q=%s', self::BASE_URL, urlencode($query));
+        $results = $this->parseSearchResults($html, $query);
 
+        return array_slice($results, 0, $limit);
+    }
+
+    /**
+     * Fetch URL with retry logic.
+     */
+    private function fetchWithRetry(string $url): ?string
+    {
         for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
             $html = $this->fetchWithCurl($url);
 
             if ($html !== null) {
-                return $this->parseSearchResults($html, $query);
+                return $html;
             }
 
             $this->logger->warning('Firmy.cz request failed, retrying...', [
@@ -96,10 +289,10 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
         }
 
         $this->logger->error('Firmy.cz: Max retries exceeded', [
-            'query' => $query,
+            'url' => $url,
         ]);
 
-        return [];
+        return null;
     }
 
     /**
@@ -237,13 +430,17 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
      */
     private function parseFromHtml(string $html, string $query, array &$results): void
     {
-        // Match: <a class="titleLinkOverlay" ... href="URL"><h3 class="h3 title" ...>NAME</h3>
-        $detailPattern = '/<a[^>]+class="titleLinkOverlay"[^>]+href="(https:\/\/www\.firmy\.cz\/detail\/[^"]+)"[^>]*>.*?<h3[^>]+class="[^"]*title[^"]*"[^>]*>([^<]+)/is';
+        // Match detail page URLs and business names
+        $detailPattern = '/<a[^>]+href="(https:\/\/www\.firmy\.cz\/detail\/[^"]+)"[^>]*>.*?<h[23][^>]*[^>]*>([^<]+)/is';
 
         if (preg_match_all($detailPattern, $html, $matches, \PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $detailUrl = html_entity_decode($match[1]);
-                $businessName = html_entity_decode(strip_tags($match[2]));
+                $businessName = html_entity_decode(strip_tags(trim($match[2])));
+
+                if (empty($businessName)) {
+                    continue;
+                }
 
                 $results[] = new DiscoveryResult($detailUrl, [
                     'business_name' => $businessName,
@@ -253,6 +450,21 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
                 ]);
             }
         }
+
+        // Also try to find direct website links
+        $websitePattern = '/<a[^>]+href="(https?:\/\/(?!www\.firmy\.cz)[^"]+)"[^>]*class="[^"]*web[^"]*"[^>]*>/i';
+
+        if (preg_match_all($websitePattern, $html, $matches)) {
+            foreach ($matches[1] as $url) {
+                $url = html_entity_decode($url);
+                if ($this->isValidWebsiteUrl($url)) {
+                    $results[] = $this->createResultWithExtraction($url, [
+                        'query' => $query,
+                        'source_type' => 'firmy_cz_direct',
+                    ]);
+                }
+            }
+        }
     }
 
     /**
@@ -260,29 +472,47 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
      */
     public function extractWebsiteFromDetailPage(string $detailUrl): ?string
     {
-        for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
-            $html = $this->fetchWithCurl($detailUrl);
+        $html = $this->fetchWithRetry($detailUrl);
 
-            if ($html !== null) {
-                // Look for website link
-                if (preg_match('/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>.*?web.*?<\/a>/is', $html, $match)) {
-                    $url = html_entity_decode($match[1]);
-
-                    if ($this->isValidWebsiteUrl($url)) {
-                        return $url;
-                    }
-                }
-
-                return null;
-            }
-
-            sleep($attempt * 2);
+        if ($html === null) {
+            return null;
         }
 
-        $this->logger->error('Failed to extract website from Firmy.cz detail', [
-            'detailUrl' => $detailUrl,
-        ]);
+        // Look for website link in JSON-LD first
+        if (preg_match('/<script type="application\/ld\+json">(\{[^<]+\})<\/script>/i', $html, $match)) {
+            try {
+                $data = json_decode($match[1], true, 512, \JSON_THROW_ON_ERROR);
+                if (isset($data['sameAs']) && is_array($data['sameAs'])) {
+                    foreach ($data['sameAs'] as $url) {
+                        if (!str_contains($url, 'firmy.cz') && $this->isValidWebsiteUrl($url)) {
+                            return $url;
+                        }
+                    }
+                }
+            } catch (\JsonException) {
+                // Fall through to HTML parsing
+            }
+        }
+
+        // Fallback: look for website link in HTML
+        if (preg_match('/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>.*?web.*?<\/a>/is', $html, $match)) {
+            $url = html_entity_decode($match[1]);
+
+            if ($this->isValidWebsiteUrl($url) && !str_contains($url, 'firmy.cz')) {
+                return $url;
+            }
+        }
 
         return null;
+    }
+
+    /**
+     * Get available category groups.
+     *
+     * @return array<string, array<string>>
+     */
+    public static function getCategoryGroups(): array
+    {
+        return self::CATEGORY_GROUPS;
     }
 }

@@ -14,6 +14,9 @@ enum LeadSource: string
     case FIRMY_CZ = 'firmy_cz';
     case EKATALOG = 'ekatalog';
     case ATLAS_SKOLSTVI = 'atlas_skolstvi';
+    case BRNO_KATALOG_SKOL = 'brno_katalog_skol';
+    case PRAHA_KATALOG_SKOL = 'praha_katalog_skol';
+    case SEZNAM_SKOL_EU = 'seznam_skol_eu';
     case ZIVE_FIRMY = 'zive_firmy';
     case NAJISTO = 'najisto';
     case ZLATESTRANKY = 'zlatestranky';
@@ -38,6 +41,9 @@ enum LeadSource: string
             self::FIRMY_CZ => 'firmy.cz',
             self::EKATALOG => 'ekatalog.cz',
             self::ATLAS_SKOLSTVI => 'atlasskolstvi.cz',
+            self::BRNO_KATALOG_SKOL => 'brno.cz',
+            self::PRAHA_KATALOG_SKOL => 'praha.eu',
+            self::SEZNAM_SKOL_EU => 'seznamskol.eu',
             self::SEZNAM => 'firmy.seznam.cz',
             self::ZIVE_FIRMY => 'zivefirmy.cz',
             self::NAJISTO => 'najisto.centrum.cz',
@@ -55,7 +61,8 @@ enum LeadSource: string
         return match ($this) {
             self::GOOGLE, self::SEZNAM, self::FIRMY_CZ, self::EKATALOG,
             self::ZIVE_FIRMY, self::NAJISTO, self::ZLATESTRANKY => true,
-            self::ATLAS_SKOLSTVI, self::CRAWLER, self::REFERENCE_CRAWLER, self::MANUAL => false,
+            self::ATLAS_SKOLSTVI, self::BRNO_KATALOG_SKOL, self::PRAHA_KATALOG_SKOL,
+            self::SEZNAM_SKOL_EU, self::CRAWLER, self::REFERENCE_CRAWLER, self::MANUAL => false,
         };
     }
 
@@ -66,7 +73,8 @@ enum LeadSource: string
     public function isCategoryBased(): bool
     {
         return match ($this) {
-            self::ATLAS_SKOLSTVI => true,
+            self::ATLAS_SKOLSTVI, self::BRNO_KATALOG_SKOL, self::PRAHA_KATALOG_SKOL,
+            self::SEZNAM_SKOL_EU => true,
             default => false,
         };
     }
@@ -74,7 +82,13 @@ enum LeadSource: string
     /**
      * Get source-specific settings schema.
      *
-     * @return array<string, array{type: string, label: string, options?: array<string, string>, multiple?: bool, required?: bool}>
+     * @return array<string, array{
+     *     type: string,
+     *     label: string,
+     *     options?: array<string, string>,
+     *     multiple?: bool,
+     *     required?: bool
+     * }>
      */
     public function getSettingsSchema(): array
     {
@@ -91,6 +105,87 @@ enum LeadSource: string
                         'vysoke-skoly' => 'Vysoké školy',
                         'vyssi-odborne-skoly' => 'Vyšší odborné školy',
                         'jazykove-skoly' => 'Jazykové školy',
+                    ],
+                ],
+                'regions' => [
+                    'type' => 'choice',
+                    'label' => 'Kraje',
+                    'multiple' => true,
+                    'required' => false,
+                    'options' => [
+                        'praha' => 'Praha',
+                        'stredocesky' => 'Středočeský',
+                        'jihocesky' => 'Jihočeský',
+                        'plzensky' => 'Plzeňský',
+                        'karlovarsky' => 'Karlovarský',
+                        'ustecky' => 'Ústecký',
+                        'liberecky' => 'Liberecký',
+                        'kralovehradecky' => 'Královéhradecký',
+                        'pardubicky' => 'Pardubický',
+                        'vysocina' => 'Vysočina',
+                        'jihomoravsky' => 'Jihomoravský',
+                        'olomoucky' => 'Olomoucký',
+                        'zlinsky' => 'Zlínský',
+                        'moravskoslezsky' => 'Moravskoslezský',
+                    ],
+                ],
+            ],
+            self::BRNO_KATALOG_SKOL => [
+                'schoolTypes' => [
+                    'type' => 'choice',
+                    'label' => 'Typy škol',
+                    'multiple' => true,
+                    'required' => true,
+                    'options' => [
+                        'ms' => 'Mateřské školy',
+                        'zs' => 'Základní školy',
+                    ],
+                ],
+            ],
+            self::PRAHA_KATALOG_SKOL => [
+                'schoolTypes' => [
+                    'type' => 'choice',
+                    'label' => 'Typy škol',
+                    'multiple' => true,
+                    'required' => true,
+                    'options' => [
+                        'ms' => 'Mateřské školy',
+                        'zs' => 'Základní školy',
+                        'ss' => 'Střední školy',
+                    ],
+                ],
+                'districts' => [
+                    'type' => 'choice',
+                    'label' => 'Městské části',
+                    'multiple' => true,
+                    'required' => false,
+                    'options' => [
+                        'praha-1' => 'Praha 1',
+                        'praha-2' => 'Praha 2',
+                        'praha-3' => 'Praha 3',
+                        'praha-4' => 'Praha 4',
+                        'praha-5' => 'Praha 5',
+                        'praha-6' => 'Praha 6',
+                        'praha-7' => 'Praha 7',
+                        'praha-8' => 'Praha 8',
+                        'praha-9' => 'Praha 9',
+                        'praha-10' => 'Praha 10',
+                    ],
+                ],
+            ],
+            self::SEZNAM_SKOL_EU => [
+                'schoolTypes' => [
+                    'type' => 'choice',
+                    'label' => 'Typy škol',
+                    'multiple' => true,
+                    'required' => true,
+                    'options' => [
+                        'materska-skola' => 'Mateřské školy',
+                        'zakladni-skola' => 'Základní školy',
+                        'stredni-skola' => 'Střední školy',
+                        'vysoka-skola' => 'Vysoké školy',
+                        'jazykova-skola' => 'Jazykové školy',
+                        'umelecka-skola' => 'Umělecké školy',
                     ],
                 ],
                 'regions' => [

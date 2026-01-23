@@ -6,38 +6,27 @@ namespace App\Service\Demand;
 
 use App\Enum\DemandSignalSource;
 use App\Enum\DemandSignalType;
+use App\Service\Browser\BrowserInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Demand signal source for NEN (Národní elektronický nástroj) - Czech public procurement.
  *
- * NEN features:
- * - Official public procurement portal
- * - All government and public sector tenders
- * - XML API available
+ * Uses headless browser because NEN is a JavaScript SPA.
  */
 class NenSource extends AbstractDemandSource
 {
     private const BASE_URL = 'https://nen.nipez.cz';
-    private const SEARCH_URL = 'https://nen.nipez.cz/verejne-zakazky/seznam-verejnych-zakazek';
-
-    // CPV codes for IT/web related tenders
-    private const CPV_CODES = [
-        '72000000' => 'IT služby',
-        '72200000' => 'Programování a poradenství',
-        '72212000' => 'Programování aplikačního software',
-        '72413000' => 'Služby návrhu webových stránek',
-        '72400000' => 'Internetové služby',
-        '79340000' => 'Reklamní a marketingové služby',
-    ];
+    private const SEARCH_URL = 'https://nen.nipez.cz/verejne-zakazky';
 
     public function __construct(
         HttpClientInterface $httpClient,
         LoggerInterface $logger,
+        private readonly ?BrowserInterface $browser = null,
     ) {
         parent::__construct($httpClient, $logger);
-        $this->requestDelayMs = 1000;
+        $this->requestDelayMs = 2000;
     }
 
     public function supports(DemandSignalSource $source): bool
@@ -51,78 +40,40 @@ class NenSource extends AbstractDemandSource
     }
 
     /**
-     * @param array<string, mixed> $options Options: cpv, region, minValue
+     * @param array<string, mixed> $options
      * @return DemandSignalResult[]
      */
     public function discover(array $options = [], int $limit = 50): array
     {
-        $results = [];
-        $page = 1;
-
-        $cpv = $options['cpv'] ?? null;
-        $minValue = $options['minValue'] ?? null;
-
-        while (count($results) < $limit) {
-            $url = $this->buildSearchUrl($cpv, $minValue, $page);
-
-            try {
-                $response = $this->httpClient->request('GET', $url, [
-                    'headers' => [
-                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Accept-Language' => 'cs,en;q=0.5',
-                    ],
-                ]);
-
-                $html = $response->getContent();
-                $pageResults = $this->parseListingPage($html);
-
-                if (empty($pageResults)) {
-                    break;
-                }
-
-                $results = array_merge($results, $pageResults);
-                $page++;
-
-                $this->rateLimit();
-
-            } catch (\Throwable $e) {
-                $this->logger->error('NEN listing fetch failed', [
-                    'url' => $url,
-                    'error' => $e->getMessage(),
-                ]);
-                break;
-            }
+        if ($this->browser === null || !$this->browser->isAvailable()) {
+            $this->logger->warning('NEN source requires Browserless but it is not available');
+            return [];
         }
 
-        return array_slice($results, 0, $limit);
+        $url = $this->buildSearchUrl($options);
+
+        try {
+            $html = $this->browser->getPageSource($url, 3000);
+            return $this->parseListingPage($html, $limit);
+        } catch (\Throwable $e) {
+            $this->logger->error('NEN fetch failed', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
     }
 
-    private function buildSearchUrl(?string $cpv, ?float $minValue, int $page): string
+    private function buildSearchUrl(array $options): string
     {
-        $params = [
-            'stav' => 'zadavani', // Only open tenders
-        ];
-
-        if ($page > 1) {
-            $params['strana'] = $page;
-        }
-
-        if ($cpv !== null) {
-            $params['cpv'] = $cpv;
-        }
-
-        if ($minValue !== null) {
-            $params['predpokladanaHodnota'] = $minValue;
-        }
-
-        return self::SEARCH_URL . '?' . http_build_query($params);
+        // The main listing page shows recent tenders, no extra params needed
+        return self::SEARCH_URL;
     }
 
     /**
      * @return DemandSignalResult[]
      */
-    private function parseListingPage(string $html): array
+    private function parseListingPage(string $html, int $limit): array
     {
         $results = [];
 
@@ -130,90 +81,129 @@ class NenSource extends AbstractDemandSource
         @$dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         $xpath = new \DOMXPath($dom);
 
-        // Find tender items
-        $items = $xpath->query("//tr[contains(@class, 'zakazka')] | //div[contains(@class, 'tender-item')]");
+        // NEN uses gov-* classes, find tender rows
+        // Look for links that point to tender details (URL pattern: /verejne-zakazky/detail-zakazky/ID)
+        $links = $xpath->query("//a[contains(@href, '/detail-zakazky/')]");
 
-        if ($items === false) {
+        if ($links === false || $links->length === 0) {
+            $this->logger->debug('No tender links found in NEN page');
             return [];
         }
 
-        foreach ($items as $item) {
-            try {
-                $result = $this->parseListItem($item, $xpath);
-                if ($result !== null) {
-                    $results[] = $result;
-                }
-            } catch (\Throwable $e) {
-                $this->logger->debug('Failed to parse NEN item', ['error' => $e->getMessage()]);
+        $seenIds = [];
+
+        foreach ($links as $link) {
+            if (count($results) >= $limit) {
+                break;
             }
+
+            if (!$link instanceof \DOMElement) {
+                continue;
+            }
+
+            $href = $link->getAttribute('href');
+            $externalId = $this->extractTenderId($href);
+
+            // Skip duplicates (same tender may have multiple links)
+            if ($externalId !== null && isset($seenIds[$externalId])) {
+                continue;
+            }
+
+            // Title is in aria-label (format: "Show detail TENDER_NAME")
+            $ariaLabel = $link->getAttribute('aria-label');
+            $title = '';
+            if (!empty($ariaLabel)) {
+                // Remove "Show detail " or "Detail " prefix
+                $title = preg_replace('/^(Show detail|Detail)\s*/i', '', $ariaLabel);
+            }
+
+            // Fallback to text content
+            if (empty($title)) {
+                $title = trim($link->textContent);
+            }
+
+            if (empty($title) || mb_strlen($title) < 10) {
+                continue;
+            }
+
+            if ($externalId !== null) {
+                $seenIds[$externalId] = true;
+            }
+
+            // Make URL absolute
+            $detailUrl = $href;
+            if (!str_starts_with($detailUrl, 'http')) {
+                $detailUrl = self::BASE_URL . $detailUrl;
+            }
+
+            // Try to find parent row for more data
+            $row = $this->findParentRow($link, $xpath);
+            $companyName = null;
+            $value = null;
+            $deadline = null;
+
+            if ($row !== null) {
+                // Try to extract additional data from the row
+                $texts = $xpath->query(".//span | .//div | .//td", $row);
+                foreach ($texts as $text) {
+                    $content = trim($text->textContent);
+
+                    // Look for price patterns
+                    if ($value === null && preg_match('/(\d[\d\s,.]*)\s*(Kč|CZK)/i', $content, $m)) {
+                        $value = $this->parsePrice($m[1]);
+                    }
+
+                    // Look for date patterns
+                    if ($deadline === null && preg_match('/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/', $content, $m)) {
+                        try {
+                            $deadline = new \DateTimeImmutable("{$m[3]}-{$m[2]}-{$m[1]}");
+                        } catch (\Exception) {
+                        }
+                    }
+                }
+            }
+
+            $signalType = $this->detectTenderType($title);
+            $industry = $this->detectIndustry($title);
+
+            $results[] = new DemandSignalResult(
+                source: DemandSignalSource::NEN,
+                type: $signalType,
+                externalId: $externalId ?? md5($title),
+                title: $title,
+                companyName: $companyName,
+                value: $value,
+                currency: 'CZK',
+                industry: $industry,
+                deadline: $deadline,
+                sourceUrl: $detailUrl,
+            );
         }
 
         return $results;
     }
 
-    private function parseListItem(\DOMNode $item, \DOMXPath $xpath): ?DemandSignalResult
+    private function findParentRow(\DOMElement $element, \DOMXPath $xpath): ?\DOMElement
     {
-        // Extract title
-        $titleNode = $xpath->query(".//a[contains(@class, 'nazev')] | .//td[contains(@class, 'nazev')]//a", $item)->item(0);
-        if ($titleNode === null) {
-            $titleNode = $xpath->query(".//a", $item)->item(0);
+        $parent = $element->parentNode;
+        $maxDepth = 10;
+
+        while ($parent !== null && $maxDepth > 0) {
+            if ($parent instanceof \DOMElement) {
+                $tag = strtolower($parent->tagName);
+                if ($tag === 'tr' || $tag === 'article' || $tag === 'li') {
+                    return $parent;
+                }
+                $class = $parent->getAttribute('class');
+                if (str_contains($class, 'item') || str_contains($class, 'row') || str_contains($class, 'card')) {
+                    return $parent;
+                }
+            }
+            $parent = $parent->parentNode;
+            $maxDepth--;
         }
 
-        if ($titleNode === null) {
-            return null;
-        }
-
-        $title = trim($titleNode->textContent);
-        $detailUrl = $titleNode instanceof \DOMElement ? $titleNode->getAttribute('href') : null;
-
-        if (empty($title)) {
-            return null;
-        }
-
-        // Make URL absolute
-        if ($detailUrl !== null && !str_starts_with($detailUrl, 'http')) {
-            $detailUrl = self::BASE_URL . $detailUrl;
-        }
-
-        // Extract tender ID
-        $externalId = $this->extractTenderId($detailUrl ?? $title);
-
-        // Extract contracting authority (zadavatel)
-        $authorityNode = $xpath->query(".//td[contains(@class, 'zadavatel')] | .//span[contains(@class, 'zadavatel')]", $item)->item(0);
-        $companyName = $authorityNode !== null ? trim($authorityNode->textContent) : null;
-
-        // Extract estimated value
-        $valueNode = $xpath->query(".//td[contains(@class, 'hodnota')] | .//span[contains(@class, 'hodnota')]", $item)->item(0);
-        $value = null;
-        if ($valueNode !== null) {
-            $value = $this->parsePrice(trim($valueNode->textContent));
-        }
-
-        // Extract deadline
-        $deadlineNode = $xpath->query(".//td[contains(@class, 'lhuta')] | .//span[contains(@class, 'deadline')]", $item)->item(0);
-        $deadline = null;
-        if ($deadlineNode !== null) {
-            $deadline = $this->parseCzechDate(trim($deadlineNode->textContent));
-        }
-
-        // Detect tender type
-        $signalType = $this->detectTenderType($title);
-
-        // Detect industry
-        $industry = $this->detectIndustry($title);
-
-        return new DemandSignalResult(
-            source: DemandSignalSource::NEN,
-            type: $signalType,
-            externalId: $externalId ?? md5($title),
-            title: $title,
-            companyName: $companyName,
-            value: $value,
-            currency: 'CZK',
-            industry: $industry,
-            deadline: $deadline,
-            sourceUrl: $detailUrl,
-        );
+        return null;
     }
 
     private function extractTenderId(?string $urlOrText): ?string
@@ -222,13 +212,13 @@ class NenSource extends AbstractDemandSource
             return null;
         }
 
-        // Try to extract ID from URL
-        if (preg_match('/zakazka[\/\-](\d+)/', $urlOrText, $matches)) {
+        // Extract ID from URL like /verejne-zakazky/detail-zakazky/N006-25-V00040026
+        if (preg_match('/detail-zakazky\/([A-Z0-9\-]+)/', $urlOrText, $matches)) {
             return $matches[1];
         }
 
-        if (preg_match('/N(\d{6}[A-Z]\d{2}[A-Z]\d{5})/', $urlOrText, $matches)) {
-            return $matches[1];
+        if (preg_match('/N\d{3}-\d{2}-[A-Z]\d+/', $urlOrText, $matches)) {
+            return $matches[0];
         }
 
         return null;

@@ -142,153 +142,8 @@ final class DiscoverLeadsMessageHandler
             'auto_analyze' => $message->autoAnalyze,
         ]);
 
-        // Discover leads - method depends on source type
-        $allResults = [];
-
-        if ($source->isCategoryBased() && $discoverySource instanceof AtlasSkolstviDiscoverySource) {
-            // Category-based sources use sourceSettings instead of queries
-            $allResults = $discoverySource->discoverWithSettings($message->sourceSettings, $message->limit);
-        } else {
-            // Query-based sources iterate over queries
-            foreach ($message->queries as $query) {
-                $results = $discoverySource->discover($query, $message->limit);
-                $allResults = array_merge($allResults, $results);
-
-                if (count($allResults) >= $message->limit) {
-                    break;
-                }
-            }
-        }
-
-        // Limit and deduplicate
-        $allResults = array_slice($allResults, 0, $message->limit);
-        $allResults = $this->deduplicateByDomain($allResults);
-
-        // Filter excluded domains (user blacklist + catalog source domains)
-        $allResults = $this->filterExcludedDomains($allResults, $user, $source);
-
-        // Check existing domains
-        $domains = array_map(fn (DiscoveryResult $r) => $r->domain, $allResults);
-        $existingDomains = $this->leadRepository->findExistingDomainsForUser($domains, $user);
-
-        $newResults = array_filter(
-            $allResults,
-            fn (DiscoveryResult $r) => !in_array($r->domain, $existingDomains, true)
-        );
-
-        if (empty($newResults)) {
-            $this->logger->info('No new leads found', [
-                'source' => $source->value,
-                'total_found' => count($allResults),
-                'existing' => count($existingDomains),
-            ]);
-
-            return;
-        }
-
-        // Save leads
-        $savedCount = 0;
-        $linkedCount = 0;
-        $analyzedCount = 0;
-        $savedLeads = [];
-
-        foreach ($newResults as $result) {
-            $lead = new Lead();
-            $lead->setUser($user);
-            $lead->setUrl($result->url);
-            $lead->setDomain($result->domain);
-            $lead->setSource($source);
-            $lead->setStatus(LeadStatus::NEW);
-            $lead->setPriority($message->priority);
-            $lead->setMetadata($result->metadata);
-
-            // Set industry from message or profile
-            if ($industry !== null) {
-                $lead->setIndustry($industry);
-            }
-
-            // Set discovery profile
-            if ($profile !== null) {
-                $lead->setDiscoveryProfile($profile);
-            }
-
-            $this->populateLeadFromExtractedData($lead, $result->metadata);
-
-            if ($affiliate !== null) {
-                $lead->setAffiliate($affiliate);
-            }
-
-            $this->em->persist($lead);
-            $savedCount++;
-            $savedLeads[] = $lead;
-
-            // Link to company if enabled and IČO is present
-            if ($message->linkCompany && $lead->getIco() !== null) {
-                $this->em->flush();
-                $company = $this->companyService->linkLeadToCompany($lead);
-                if ($company !== null) {
-                    $linkedCount++;
-                }
-            }
-        }
-
-        $this->em->flush();
-
-        // Dispatch analysis jobs if auto-analyze is enabled
-        if ($message->autoAnalyze) {
-            foreach ($savedLeads as $lead) {
-                $leadId = $lead->getId();
-                if ($leadId !== null) {
-                    $this->messageBus->dispatch(new AnalyzeLeadMessage(
-                        leadId: $leadId,
-                        reanalyze: false,
-                        industryFilter: $industry?->value,
-                        profileId: $message->profileId,
-                    ));
-                    $analyzedCount++;
-                }
-            }
-        }
-
-        $this->logger->info('Lead discovery completed', [
-            'source' => $source->value,
-            'saved' => $savedCount,
-            'linked' => $linkedCount,
-            'queued_for_analysis' => $analyzedCount,
-        ]);
-    }
-
-    /**
-     * @param array<DiscoveryResult> $results
-     * @return array<DiscoveryResult>
-     */
-    private function deduplicateByDomain(array $results): array
-    {
-        $seen = [];
-        $unique = [];
-
-        foreach ($results as $result) {
-            if (!isset($seen[$result->domain])) {
-                $seen[$result->domain] = true;
-                $unique[] = $result;
-            }
-        }
-
-        return $unique;
-    }
-
-    /**
-     * Filter out domains matching user's excluded patterns and catalog source domains.
-     *
-     * @param array<DiscoveryResult> $results
-     * @return array<DiscoveryResult>
-     */
-    private function filterExcludedDomains(array $results, \App\Entity\User $user, LeadSource $source): array
-    {
-        // Build exclusion patterns
+        // Build excluded patterns for filtering
         $excludedPatterns = $user->getExcludedDomains();
-
-        // Add catalog domain patterns for catalog sources
         if ($source->isCatalogSource()) {
             $catalogDomain = $source->getCatalogDomain();
             if ($catalogDomain !== null) {
@@ -297,28 +152,198 @@ final class DiscoverLeadsMessageHandler
             }
         }
 
-        if (empty($excludedPatterns)) {
-            return $results;
+        // Stats
+        $savedCount = 0;
+        $skippedExisting = 0;
+        $skippedExcluded = 0;
+        $linkedCount = 0;
+        $analyzedCount = 0;
+        $seenDomains = [];
+
+        // Discover and process leads progressively
+        if ($source->isCategoryBased() && $discoverySource instanceof AtlasSkolstviDiscoverySource) {
+            // Category-based sources - get all results first (no extraction during discovery)
+            $results = $discoverySource->discoverWithSettings($message->sourceSettings, $message->limit);
+            foreach ($results as $result) {
+                $this->processDiscoveryResult(
+                    $result, $user, $source, $profile, $industry, $affiliate, $message,
+                    $excludedPatterns, $seenDomains,
+                    $savedCount, $skippedExisting, $skippedExcluded, $linkedCount, $analyzedCount
+                );
+
+                if ($savedCount >= $message->limit) {
+                    break;
+                }
+            }
+        } else {
+            // Query-based sources - process results progressively
+            foreach ($message->queries as $query) {
+                // Temporarily disable extraction in discovery source - we'll do it per-lead
+                $extractionWasEnabled = false;
+                if ($discoverySource instanceof AbstractDiscoverySource) {
+                    $extractionWasEnabled = $message->extractData;
+                    $discoverySource->setExtractionEnabled(false);
+                }
+
+                $results = $discoverySource->discover($query, $message->limit);
+
+                // Re-enable extraction for manual processing
+                if ($discoverySource instanceof AbstractDiscoverySource) {
+                    $discoverySource->setExtractionEnabled($extractionWasEnabled);
+                }
+
+                foreach ($results as $result) {
+                    $this->processDiscoveryResult(
+                        $result, $user, $source, $profile, $industry, $affiliate, $message,
+                        $excludedPatterns, $seenDomains,
+                        $savedCount, $skippedExisting, $skippedExcluded, $linkedCount, $analyzedCount
+                    );
+
+                    if ($savedCount >= $message->limit) {
+                        break 2;
+                    }
+                }
+            }
         }
 
-        $originalCount = count($results);
+        $this->logger->info('Lead discovery completed', [
+            'source' => $source->value,
+            'saved' => $savedCount,
+            'skipped_existing' => $skippedExisting,
+            'skipped_excluded' => $skippedExcluded,
+            'linked' => $linkedCount,
+            'queued_for_analysis' => $analyzedCount,
+        ]);
+    }
 
-        $filtered = array_values($this->domainMatcher->filterExcluded(
-            $results,
-            $excludedPatterns,
-            fn (DiscoveryResult $r) => $r->domain
-        ));
+    /**
+     * Process a single discovery result - check exclusions, save lead, extract data, queue analysis.
+     *
+     * @param array<string> $excludedPatterns
+     * @param array<string, bool> $seenDomains
+     */
+    private function processDiscoveryResult(
+        DiscoveryResult $result,
+        \App\Entity\User $user,
+        LeadSource $source,
+        ?\App\Entity\DiscoveryProfile $profile,
+        ?Industry $industry,
+        ?\App\Entity\Affiliate $affiliate,
+        DiscoverLeadsMessage $message,
+        array $excludedPatterns,
+        array &$seenDomains,
+        int &$savedCount,
+        int &$skippedExisting,
+        int &$skippedExcluded,
+        int &$linkedCount,
+        int &$analyzedCount,
+    ): void {
+        $domain = $result->domain;
 
-        $excludedCount = $originalCount - count($filtered);
-        if ($excludedCount > 0) {
-            $this->logger->info('Filtered excluded domains from discovery results', [
-                'excluded_count' => $excludedCount,
-                'patterns_count' => count($excludedPatterns),
-                'source' => $source->value,
-            ]);
+        // Skip if already seen in this batch
+        if (isset($seenDomains[$domain])) {
+            return;
+        }
+        $seenDomains[$domain] = true;
+
+        // Check if domain is excluded
+        if (!empty($excludedPatterns) && $this->domainMatcher->isExcluded($domain, $excludedPatterns)) {
+            $skippedExcluded++;
+            $this->logger->debug('Skipped excluded domain', ['domain' => $domain]);
+
+            return;
         }
 
-        return $filtered;
+        // Check if lead already exists for this user
+        $existingLead = $this->leadRepository->findOneBy([
+            'user' => $user,
+            'domain' => $domain,
+        ]);
+
+        if ($existingLead !== null) {
+            $skippedExisting++;
+            $this->logger->debug('Lead already exists', ['domain' => $domain]);
+
+            return;
+        }
+
+        // Create lead entity
+        $lead = new Lead();
+        $lead->setUser($user);
+        $lead->setDomain($domain);
+        $lead->setUrl($result->url);
+        $lead->setSource($source);
+        $lead->setStatus(LeadStatus::NEW);
+
+        if ($profile !== null) {
+            $lead->setDiscoveryProfile($profile);
+        }
+
+        if ($industry !== null) {
+            $lead->setIndustry($industry);
+        }
+
+        if ($affiliate !== null) {
+            $lead->setAffiliate($affiliate);
+        }
+
+        // Store discovery metadata
+        $metadata = $result->metadata;
+        $lead->setMetadata($metadata);
+
+        // Set basic fields from discovery result
+        if (!empty($metadata['business_name'])) {
+            $lead->setCompanyName($metadata['business_name']);
+        }
+
+        // Extract data from website if enabled
+        if ($message->extractData) {
+            try {
+                $pageData = $this->pageDataExtractor->extractFromUrl($result->url);
+                if ($pageData !== null) {
+                    $extractedMetadata = $pageData->toMetadata();
+                    $metadata = array_merge($metadata, $extractedMetadata);
+                    $lead->setMetadata($metadata);
+                    $this->populateLeadFromExtractedData($lead, $metadata);
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('Failed to extract data from lead', [
+                    'domain' => $domain,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Persist lead immediately
+        $this->em->persist($lead);
+        $this->em->flush();
+        $savedCount++;
+
+        $this->logger->debug('Lead saved', [
+            'domain' => $domain,
+            'lead_id' => $lead->getId()?->toRfc4122(),
+        ]);
+
+        // Link to company if enabled
+        if ($message->linkCompany) {
+            try {
+                $company = $this->companyService->linkLeadToCompany($lead);
+                if ($company !== null) {
+                    $linkedCount++;
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('Failed to link lead to company', [
+                    'domain' => $domain,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Queue for analysis if enabled
+        if ($message->autoAnalyze && $lead->getId() !== null) {
+            $this->messageBus->dispatch(new AnalyzeLeadMessage($lead->getId()));
+            $analyzedCount++;
+        }
     }
 
     /**

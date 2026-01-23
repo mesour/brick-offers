@@ -238,7 +238,7 @@ class TypographyDesignAnalyzer extends AbstractLeadAnalyzer
 
         // Check for skipped heading levels
         $headingOrder = [];
-        if (preg_match_all('/<(h[1-6])[^>]*>/i', $html, $matches, PREG_OFFSET_SORT)) {
+        if (preg_match_all('/<(h[1-6])[^>]*>/i', $html, $matches)) {
             $headingOrder = array_map(fn ($h) => (int) substr($h, 1), $matches[1]);
         }
 

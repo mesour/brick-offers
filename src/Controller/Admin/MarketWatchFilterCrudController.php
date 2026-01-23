@@ -7,7 +7,6 @@ namespace App\Controller\Admin;
 use App\Entity\MarketWatchFilter;
 use App\Entity\User;
 use App\Enum\DemandSignalType;
-use App\Enum\Industry;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
@@ -30,10 +29,12 @@ class MarketWatchFilterCrudController extends AbstractTenantCrudController
     public function configureCrud(Crud $crud): Crud
     {
         return $crud
-            ->setEntityLabelInSingular('Filtr sledování trhu')
-            ->setEntityLabelInPlural('Filtry sledování trhu')
+            ->setEntityLabelInSingular('Filtr sledování poptávek')
+            ->setEntityLabelInPlural('Filtry sledování poptávek')
             ->setSearchFields(['name'])
             ->setDefaultSort(['createdAt' => 'DESC'])
+            ->setHelp('new', 'Odvětví se automaticky bere z nastavení vašeho účtu.')
+            ->setHelp('edit', 'Odvětví se automaticky bere z nastavení vašeho účtu.')
             ->showEntityActionsInlined();
     }
 
@@ -58,15 +59,6 @@ class MarketWatchFilterCrudController extends AbstractTenantCrudController
             ->setLabel('Klíčová slova')
             ->setHelp('Každé klíčové slovo na nový řádek');
 
-        yield ChoiceField::new('industries')
-            ->setLabel('Odvětví')
-            ->setChoices(array_combine(
-                array_map(fn (Industry $i) => $i->getLabel(), Industry::cases()),
-                array_map(fn (Industry $i) => $i->value, Industry::cases())
-            ))
-            ->allowMultipleChoices()
-            ->hideOnIndex();
-
         yield ChoiceField::new('signalTypes')
             ->setLabel('Typy signálů')
             ->setChoices(array_combine(
@@ -88,12 +80,12 @@ class MarketWatchFilterCrudController extends AbstractTenantCrudController
 
         yield NumberField::new('minValue')
             ->setLabel('Min. hodnota')
-            ->setHelp('Minimální hodnota zakázky/poptávky')
+            ->setHelp('Minimální hodnota zakázky/poptávky v Kč')
             ->hideOnIndex();
 
         yield NumberField::new('maxValue')
             ->setLabel('Max. hodnota')
-            ->setHelp('Maximální hodnota zakázky/poptávky')
+            ->setHelp('Maximální hodnota zakázky/poptávky v Kč')
             ->hideOnIndex();
 
         yield BooleanField::new('active')
