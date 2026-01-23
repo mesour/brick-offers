@@ -33,6 +33,11 @@ class SecurityAnalyzer extends AbstractLeadAnalyzer
         return 20;
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje bezpečnostní HTTP hlavičky (CSP, HSTS, X-Frame-Options, atd.).';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

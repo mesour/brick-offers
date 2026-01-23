@@ -1,0 +1,6 @@
+{% if field.value %}
+    <a href="{{ entity.instance.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+        {{ field.value }}
+        <i class="fa fa-external-link-alt fa-xs ms-1 text-muted"></i>
+    </a>
+{% endif %}

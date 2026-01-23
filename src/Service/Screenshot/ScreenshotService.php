@@ -44,7 +44,13 @@ class ScreenshotService
         ]);
 
         try {
-            $response = $this->httpClient->request('POST', $this->chromeEndpoint . '/screenshot', [
+            // Browserless v2 API - viewport as query params
+            $queryParams = http_build_query([
+                'viewport.width' => $width,
+                'viewport.height' => $height,
+            ]);
+
+            $response = $this->httpClient->request('POST', $this->chromeEndpoint . '/screenshot?' . $queryParams, [
                 'headers' => [
                     'Content-Type' => 'application/json',
                 ],
@@ -53,10 +59,6 @@ class ScreenshotService
                     'options' => [
                         'type' => $format,
                         'fullPage' => $fullPage,
-                        'viewport' => [
-                            'width' => $width,
-                            'height' => $height,
-                        ],
                     ],
                 ],
                 'timeout' => 60,
@@ -93,23 +95,25 @@ class ScreenshotService
         ]);
 
         try {
-            $response = $this->httpClient->request('POST', $this->chromeEndpoint . '/screenshot', [
+            // Browserless v2 API - viewport as query params, options in JSON body
+            $queryParams = http_build_query([
+                'viewport.width' => $width,
+                'viewport.height' => $height,
+            ]);
+
+            $response = $this->httpClient->request('POST', $this->chromeEndpoint . '/screenshot?' . $queryParams, [
                 'headers' => [
                     'Content-Type' => 'application/json',
                 ],
                 'json' => [
                     'url' => $url,
-                    'options' => [
-                        'type' => $format,
-                        'fullPage' => $fullPage,
-                        'viewport' => [
-                            'width' => $width,
-                            'height' => $height,
-                        ],
-                    ],
                     'gotoOptions' => [
                         'waitUntil' => $waitUntil,
                         'timeout' => 30000,
+                    ],
+                    'options' => [
+                        'type' => $format,
+                        'fullPage' => $fullPage,
                     ],
                 ],
                 'timeout' => 60,
@@ -131,7 +135,8 @@ class ScreenshotService
     public function isAvailable(): bool
     {
         try {
-            $response = $this->httpClient->request('GET', $this->chromeEndpoint . '/health', [
+            // Try /json/version endpoint (works with Browserless v2+)
+            $response = $this->httpClient->request('GET', $this->chromeEndpoint . '/json/version', [
                 'timeout' => 5,
             ]);
 

@@ -115,7 +115,7 @@ class SeznamDiscoverySource extends AbstractDiscoverySource
                     continue;
                 }
 
-                $results[] = new DiscoveryResult($url, [
+                $results[] = $this->createResultWithExtraction($url, [
                     'title' => $title,
                     'query' => $query,
                     'source_type' => 'seznam_search',
@@ -128,7 +128,7 @@ class SeznamDiscoverySource extends AbstractDiscoverySource
             $urls = $this->extractUrlsFromHtml($html);
             foreach ($urls as $url) {
                 if ($this->isValidWebsiteUrl($url)) {
-                    $results[] = new DiscoveryResult($url, [
+                    $results[] = $this->createResultWithExtraction($url, [
                         'query' => $query,
                         'source_type' => 'seznam_search',
                     ]);

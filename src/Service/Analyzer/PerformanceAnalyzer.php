@@ -11,17 +11,17 @@ class PerformanceAnalyzer extends AbstractBrowserAnalyzer
 {
     // Core Web Vitals thresholds (in milliseconds, except CLS which is unitless)
     // Based on Google's guidelines: https://web.dev/vitals/
-    private const LCP_GOOD = 2500;
-    private const LCP_POOR = 4000;
+    public const LCP_GOOD = 2500;
+    public const LCP_POOR = 4000;
 
-    private const FCP_GOOD = 1800;
-    private const FCP_POOR = 3000;
+    public const FCP_GOOD = 1800;
+    public const FCP_POOR = 3000;
 
-    private const CLS_GOOD = 0.1;
-    private const CLS_POOR = 0.25;
+    public const CLS_GOOD = 0.1;
+    public const CLS_POOR = 0.25;
 
-    private const TTFB_GOOD = 800;
-    private const TTFB_POOR = 1800;
+    public const TTFB_GOOD = 800;
+    public const TTFB_POOR = 1800;
 
     public function getCategory(): IssueCategory
     {
@@ -31,6 +31,84 @@ class PerformanceAnalyzer extends AbstractBrowserAnalyzer
     public function getPriority(): int
     {
         return 50; // After basic analyzers, before visual
+    }
+
+    public function getDescription(): string
+    {
+        return 'Měří Core Web Vitals: LCP, FCP, CLS a TTFB podle Google standardů.';
+    }
+
+    /**
+     * @return array<string, array{type: string, label: string, default: mixed, min?: int|float, max?: int|float, step?: int|float}>
+     */
+    public function getConfigurableSettings(): array
+    {
+        return [
+            'lcp_good' => [
+                'type' => 'integer',
+                'label' => 'LCP dobrý (ms)',
+                'default' => self::LCP_GOOD,
+                'min' => 1000,
+                'max' => 10000,
+                'step' => 100,
+            ],
+            'lcp_poor' => [
+                'type' => 'integer',
+                'label' => 'LCP špatný (ms)',
+                'default' => self::LCP_POOR,
+                'min' => 2000,
+                'max' => 15000,
+                'step' => 100,
+            ],
+            'fcp_good' => [
+                'type' => 'integer',
+                'label' => 'FCP dobrý (ms)',
+                'default' => self::FCP_GOOD,
+                'min' => 500,
+                'max' => 5000,
+                'step' => 100,
+            ],
+            'fcp_poor' => [
+                'type' => 'integer',
+                'label' => 'FCP špatný (ms)',
+                'default' => self::FCP_POOR,
+                'min' => 1000,
+                'max' => 10000,
+                'step' => 100,
+            ],
+            'cls_good' => [
+                'type' => 'number',
+                'label' => 'CLS dobrý',
+                'default' => self::CLS_GOOD,
+                'min' => 0.0,
+                'max' => 0.5,
+                'step' => 0.01,
+            ],
+            'cls_poor' => [
+                'type' => 'number',
+                'label' => 'CLS špatný',
+                'default' => self::CLS_POOR,
+                'min' => 0.1,
+                'max' => 1.0,
+                'step' => 0.01,
+            ],
+            'ttfb_good' => [
+                'type' => 'integer',
+                'label' => 'TTFB dobrý (ms)',
+                'default' => self::TTFB_GOOD,
+                'min' => 200,
+                'max' => 2000,
+                'step' => 100,
+            ],
+            'ttfb_poor' => [
+                'type' => 'integer',
+                'label' => 'TTFB špatný (ms)',
+                'default' => self::TTFB_POOR,
+                'min' => 500,
+                'max' => 5000,
+                'step' => 100,
+            ],
+        ];
     }
 
     public function analyze(Lead $lead): AnalyzerResult

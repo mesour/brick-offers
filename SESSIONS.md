@@ -1,5 +1,232 @@
 # Session Log
 
+## 2026-01-23 (MonitoredDomain Refactoring)
+
+### Focus
+Refaktoring MonitoredDomain architektury - oddělení globálních domén od uživatelských odběrů
+
+### Completed
+- Odstraněn `user_id` z `MonitoredDomain` entity - domény jsou nyní globální
+- Vytvořen CLI příkaz `app:monitor:domain` pro správu domén (add, remove, update, list)
+- `MonitoredDomainCrudController` omezen na ROLE_SUPER_ADMIN
+- `MonitoredDomainSubscriptionCrudController` upraven pro výběr z globálních domén
+- Vytvořena migrace pro odstranění user_id a duplicit
+
+### Files Changed
+- `src/Entity/MonitoredDomain.php` - odstraněn user vztah a constraints
+- `src/Command/MonitorDomainCommand.php` - nový CLI příkaz
+- `migrations/Version20260123120000.php` - migrace schématu
+- `src/Controller/Admin/MonitoredDomainCrudController.php` - AbstractCrudController + ROLE_SUPER_ADMIN
+- `src/Controller/Admin/MonitoredDomainSubscriptionCrudController.php` - query builder pro globální domény
+- `src/Controller/Admin/DashboardController.php` - permission na menu item
+
+### Blockers
+Žádné
+
+---
+
+## 2026-01-23 (Contact Page Crawling)
+
+### Focus
+Rozšíření PageDataExtractor o automatické prohledávání kontaktních stránek pro nalezení emailů
+
+### Completed
+- Přidána metoda `extractWithContactPages()` do `PageDataExtractor`
+- Extrakce prohledává stránky jako `/kontakt`, `/contact`, `/about`, `/o-nas`, `/impressum`
+- Navštíví až 3 kontaktní stránky a sloučí nalezené emaily/telefony
+- Integrováno do `AbstractDiscoverySource` - discovery sources nyní automaticky crawlují kontaktní stránky
+- Přidána možnost vypnout crawling: `setContactPageCrawlingEnabled(false)`
+- Aktualizována dokumentace `docs/concept/discovery-sources.md`
+
+### Files Changed
+- `src/Service/Extractor/PageDataExtractor.php` - +`extractWithContactPages()`, +`findContactPageUrls()`, +`resolveUrl()`, +`getBaseUrl()`, +`getDefaultHeaders()`
+- `src/Service/Discovery/AbstractDiscoverySource.php` - změna na `extractWithContactPages()`, +`setContactPageCrawlingEnabled()`
+- `docs/concept/discovery-sources.md` - dokumentace nové funkce
+
+### Blockers
+Žádné
+
+---
+
+## 2026-01-23 (Auto Snapshots & Screenshots)
+
+### Focus
+Automatické vytváření AnalysisSnapshot a screenshot při analýze leadu
+
+### Completed
+- Rozšířen `AnalyzeLeadMessageHandler` o automatické vytváření snapshotů a screenshotů
+- Po dokončení analýzy se vytvoří `AnalysisSnapshot` (pro trending/historii)
+- Po analýze se asynchronně dispatchuje `TakeScreenshotMessage` (pro vizuální archivaci)
+- Přidány nové dependencies: `SnapshotService`, `MessageBusInterface`
+
+### Files Changed
+- `src/MessageHandler/AnalyzeLeadMessageHandler.php` - přidány imports, dependencies, snapshot creation, screenshot dispatch
+
+### Blockers
+Žádné
+
+---
+
+## 2026-01-22 (Analyzer Config UI)
+
+### Focus
+Implementace intuitivního UI pro konfiguraci analyzérů v Discovery Profile
+
+### Completed
+- Rozšířen `LeadAnalyzerInterface` o metody `getName()`, `getDescription()`, `getConfigurableSettings()`
+- Implementovány defaulty v `AbstractLeadAnalyzer`
+- Vytvořen `AnalyzerConfigService` pro správu schémat analyzérů
+- Vytvořen custom `AnalyzerConfigField` pro EasyAdmin
+- Vytvořeny form types: `AnalyzerConfigType`, `AnalyzerItemType`, `ThresholdsType`
+- Vytvořen form theme `analyzer_config_theme.html.twig`
+- Aktualizovány všechny analyzéry s popisky
+- `PerformanceAnalyzer` má konfigurovatelné thresholds (LCP, FCP, CLS, TTFB)
+- Přejmenován tab "Analýza nastavení" na "Nastavení analýzy"
+- Nahrazen JSON editor intuitivním UI s checkboxy, slidery a multi-select
+
+### Files Changed
+- `src/Service/Analyzer/LeadAnalyzerInterface.php` - +3 metody
+- `src/Service/Analyzer/AbstractLeadAnalyzer.php` - +3 defaultní implementace
+- `src/Service/AnalyzerConfigService.php` - **nový soubor**
+- `src/Admin/Field/AnalyzerConfigField.php` - **nový soubor**
+- `src/Form/AnalyzerConfigType.php` - **nový soubor**
+- `src/Form/AnalyzerItemType.php` - **nový soubor**
+- `src/Form/ThresholdsType.php` - **nový soubor**
+- `templates/admin/field/analyzer_config.html.twig` - **nový soubor**
+- `templates/admin/form/analyzer_config_theme.html.twig` - **nový soubor**
+- `config/packages/twig.yaml` - přidán form theme
+- `src/Controller/Admin/DiscoveryProfileCrudController.php` - použití nového fieldu
+- Všechny `*Analyzer.php` soubory - přidán `getDescription()`
+
+### Blockers
+Žádné
+
+---
+
+## 2026-01-22 (Admin Documentation)
+
+### Focus
+Vytvoření uživatelské dokumentace pro admin rozhraní v češtině
+
+### Completed
+- Vytvořena složka `docs/admin/` pro dokumentaci
+- Vytvořeno 7 dokumentačních souborů:
+  - `README.md` - přehled admin panelu, navigace, základní workflow
+  - `lead-pipeline.md` - Leady, Firmy, Analýzy, Výsledky, Snapshoty
+  - `workflow.md` - Návrhy (Proposals) a Nabídky (Offers)
+  - `email.md` - Moje šablony, Systémové šablony, Email logy, Blacklist
+  - `monitoring.md` - Sledované domény, Odběry, Snapshoty konkurence, Signály poptávky
+  - `configuration.md` - Uživatelé, Konfigurace analyzátorů, Poznámky k firmám, Benchmarky
+  - `permissions.md` - Přehled 20 oprávnění, role ADMIN/USER, typické kombinace
+
+### Files Changed
+- `docs/admin/README.md` - **nový soubor**
+- `docs/admin/lead-pipeline.md` - **nový soubor**
+- `docs/admin/workflow.md` - **nový soubor**
+- `docs/admin/email.md` - **nový soubor**
+- `docs/admin/monitoring.md` - **nový soubor**
+- `docs/admin/configuration.md` - **nový soubor**
+- `docs/admin/permissions.md` - **nový soubor**
+
+### Blockers
+Žádné
+
+---
+
+## 2026-01-22 (User Industry Configuration)
+
+### Focus
+Implementace konfigurace odvětví (industries) pro uživatele s výběrem v adminu
+
+### Completed
+- Přidáno `allowedIndustries` pole do User entity (JSON array)
+- Implementovány helper metody: `getAllowedIndustries()`, `hasIndustry()`, `canUseIndustry()`, `addIndustry()`, `removeIndustry()`, `getDefaultIndustry()`
+- Sub-users automaticky dědí industries z admin účtu
+- Vytvořen CLI command `app:user:set-industries`:
+  - Options: `--set`, `--add`, `--remove`, `--list`
+  - Podpora identifikace uživatele přes code nebo email
+- Vytvořen `CurrentIndustryService` pro správu session:
+  - Ukládá current industry do session
+  - Validuje přístup uživatele k industry
+  - Vrací available industries pro dropdown
+- Vytvořen `IndustryExtension` Twig extension:
+  - Twig globals: `current_industry`, `current_industry_value`, `available_industries`, `has_multiple_industries`
+  - Twig functions: `get_current_industry()`, `get_available_industries()`, `get_industry_label()`
+- Přidán endpoint `POST /admin/switch-industry` do DashboardController
+- Override EasyAdmin layout pro industry switcher:
+  - Dropdown v headeru vedle user menu
+  - AJAX přepínání s reload stránky
+  - Zobrazení pouze pokud má user více industries
+- Přidán `data-industry="..."` atribut na `<body>` tag
+- Přidány CSS styly pro industry switcher
+- Vytvořena migrace `Version20260122185459`
+
+### Files Changed
+- `src/Entity/User.php` - přidáno `allowedIndustries` pole + metody
+- `src/Command/UserSetIndustriesCommand.php` - **nový soubor**
+- `src/Service/CurrentIndustryService.php` - **nový soubor**
+- `src/Twig/IndustryExtension.php` - **nový soubor**
+- `src/Controller/Admin/DashboardController.php` - přidán switch-industry endpoint
+- `templates/bundles/EasyAdminBundle/layout.html.twig` - **nový soubor** (layout override)
+- `public/css/admin.css` - přidány industry switcher styly
+- `migrations/Version20260122185459.php` - **nový soubor**
+- `.ai/history/user-industry-configuration.md` - **nový soubor**
+
+### Blockers
+Žádné
+
+### Usage
+```bash
+# Nastavit industries pro uživatele
+bin/console app:user:set-industries admin --set=eshop,webdesign
+
+# Přidat industry
+bin/console app:user:set-industries admin --add=real_estate
+
+# Odebrat industry
+bin/console app:user:set-industries admin --remove=eshop
+
+# Zobrazit aktuální industries
+bin/console app:user:set-industries admin --list
+```
+
+---
+
+## 2026-01-22 (Admin Module Fixes & Improvements)
+
+### Focus
+Oprava bugů v admin modulu a vylepšení multi-tenancy systému
+
+### Completed
+- Opraven Nginx Unit port mismatch (80 → 8080, www → public)
+- Opraven UUID toBinary() PostgreSQL encoding error
+- Vytvořen PermissionVoter pro propojení EasyAdmin permissions s User::hasPermission()
+- Přidána metoda __toString() do entit: Lead, Analysis, Company, EmailTemplate, MonitoredDomain, Offer, Proposal
+- Implementován kompletní tenant filtering pro všechny CRUD controllery:
+  - Přímý vztah: AbstractTenantCrudController
+  - Nepřímý vztah: custom query pro Analysis, AnalysisResult, AnalysisSnapshot, Company, MonitoredDomain, CompetitorSnapshot
+- Automatické nastavení user při vytváření entit (AbstractTenantCrudController::persistEntity)
+- Skrytí pole user ve formulářích (hideOnForm) - user se nastavuje automaticky
+- Zjednodušené formuláře:
+  - Lead: pouze URL při vytváření
+  - Company: pouze IČO při vytváření
+- Zakázáno manuální vytváření Proposals (AI-generated)
+- EmailTemplate změněno na read-only (systémové šablony)
+- Opraveny názvy polí v EmailTemplateCrudController a UserEmailTemplateCrudController
+- Přejmenování v menu: "Systémové šablony" a "Moje šablony"
+
+### Files Changed
+- `.infrastructure/docker/php/unit.json` - port fix
+- `src/Controller/Admin/AbstractTenantCrudController.php` - tenant filtering, auto-set user
+- `src/Controller/Admin/*CrudController.php` - tenant filtering, field fixes
+- `src/Security/Voter/PermissionVoter.php` - **nový soubor**
+- `src/Entity/*.php` - přidány __toString() metody
+
+### Blockers
+- Žádné
+
+---
+
 ## 2026-01-22 (Admin Module)
 
 ### Focus
@@ -533,3 +760,75 @@ MVP rozšíření: Poptávkový SW & Sledování Konkurence
 
 ### Notes
 ARES Monitor rozšíření (sledování změn ve firmách) nebylo implementováno - může být přidáno v další iteraci.
+
+---
+
+## 2026-01-22 (Discovery Profiles)
+
+### Focus
+Implementace Discovery Profiles - pojmenované profily spojující discovery nastavení, analyzer konfigurace a industry
+
+### Completed
+- Vytvořena `DiscoveryProfile` entita s kompletní strukturou:
+  - Discovery settings (sources, queries, limit, extractData, linkCompany, priority)
+  - Analysis settings (autoAnalyze, analyzerConfigs JSON)
+  - Industry binding
+  - isDefault flag pro označení výchozího profilu
+- Vytvořen `DiscoveryProfileRepository` s helper metodami:
+  - `findDefaultForUser()`, `findActiveForUser()`, `findAllActiveForBatch()`
+  - `clearDefaultForUser()`, `countLeadsByProfile()`
+- Aktualizována `Lead` entita - přidán vztah `discoveryProfile`
+- Aktualizována `User` entita - přidán vztah `discoveryProfiles`
+- Vytvořen `DiscoveryProfileCrudController` pro Admin:
+  - CRUD s taby (Basic Info, Discovery, Analyzers, Metadata)
+  - Custom actions: Duplicate, Set as Default
+  - Transform pro textarea→array queries
+- Přidáno "Discovery Profiles" do admin menu
+- Aktualizované Messages:
+  - `DiscoverLeadsMessage` + profileId, industryFilter, autoAnalyze
+  - `AnalyzeLeadMessage` + profileId
+  - `BatchDiscoveryMessage` + profileName, useProfiles
+- Aktualizované MessageHandlers:
+  - `DiscoverLeadsMessageHandler` - podpora profilů, auto-analyze dispatch
+  - `BatchDiscoveryMessageHandler` - profile-based vs legacy discovery
+  - `AnalyzeLeadMessageHandler` - profile analyzer configs, ignoreCodes
+- Aktualizován `DiscoveryBatchCommand`:
+  - `--profile` option pro konkrétní profil
+  - `--legacy` flag pro legacy mode
+  - Rozšířen `--show-config` o zobrazení profilů
+- Vytvořena migrace `Version20260122215543`
+
+### Files Changed
+- `src/Entity/DiscoveryProfile.php` - **nový soubor**
+- `src/Repository/DiscoveryProfileRepository.php` - **nový soubor**
+- `src/Controller/Admin/DiscoveryProfileCrudController.php` - **nový soubor**
+- `migrations/Version20260122215543.php` - **nový soubor**
+- `src/Entity/Lead.php` - přidán discoveryProfile vztah
+- `src/Entity/User.php` - přidán discoveryProfiles vztah
+- `src/Message/DiscoverLeadsMessage.php` - nové parametry
+- `src/Message/AnalyzeLeadMessage.php` - profileId parametr
+- `src/Message/BatchDiscoveryMessage.php` - profile support
+- `src/MessageHandler/DiscoverLeadsMessageHandler.php` - profile support
+- `src/MessageHandler/BatchDiscoveryMessageHandler.php` - profile-based discovery
+- `src/MessageHandler/AnalyzeLeadMessageHandler.php` - analyzer configs
+- `src/Command/DiscoveryBatchCommand.php` - profile options
+- `src/Controller/Admin/DashboardController.php` - menu item
+- `.ai/history/discovery-profiles.md` - **nový soubor**
+
+### Blockers
+Žádné
+
+### Usage
+```bash
+# Vytvořit profil v Admin UI
+# Admin → Configuration → Discovery Profiles → New
+
+# Spustit discovery s profilem
+bin/console app:discovery:batch --user=admin --profile="E-shopy Praha" --dry-run
+
+# Spustit discovery pro všechny profily
+bin/console app:discovery:batch --all-users
+
+# Zobrazit konfiguraci profilů
+bin/console app:discovery:batch --all-users --show-config
+```

@@ -343,4 +343,9 @@ class Company
 
         return !empty($parts) ? implode(', ', $parts) : null;
     }
+
+    public function __toString(): string
+    {
+        return $this->name ?? $this->ico;
+    }
 }

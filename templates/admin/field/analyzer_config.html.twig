@@ -1,0 +1,209 @@
+{# templates/admin/field/analyzer_config.html.twig #}
+{% if ea.crud.currentPage == 'detail' %}
+    {# Detail view - show summary #}
+    <div class="analyzer-config-summary">
+        {% set config = field.value ?? {} %}
+        {% if config is empty %}
+            <span class="text-muted">Výchozí konfigurace</span>
+        {% else %}
+            <div class="d-flex flex-wrap gap-1">
+                {% for categoryCode, categoryConfig in config %}
+                    <span class="badge {{ categoryConfig.enabled ?? true ? 'bg-success' : 'bg-secondary' }}">
+                        {{ categoryCode }}
+                        {% if categoryConfig.ignoreCodes is defined and categoryConfig.ignoreCodes|length > 0 %}
+                            <small>({{ categoryConfig.ignoreCodes|length }})</small>
+                        {% endif %}
+                    </span>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+{% else %}
+    {# Form view - custom grid UI #}
+    {% set schemas = form.vars.schemas ?? {} %}
+
+    <div class="analyzer-config-grid">
+        <div class="row g-2">
+            {% for categoryCode, child in form %}
+                {% set schema = child.vars.schema ?? {} %}
+                {% set isEnabled = child.enabled.vars.value ?? true %}
+                <div class="col-md-6 col-xl-4">
+                    <div class="analyzer-card {{ isEnabled ? 'enabled' : 'disabled' }}">
+                        <div class="analyzer-header">
+                            <label class="analyzer-toggle">
+                                {{ form_widget(child.enabled) }}
+                                <span class="analyzer-name">{{ schema.name ?? categoryCode }}</span>
+                            </label>
+                            {% if schema.universal ?? false %}
+                                <span class="badge bg-secondary" title="Univerzální">U</span>
+                            {% else %}
+                                <span class="badge bg-primary" title="Industry-specific">I</span>
+                            {% endif %}
+                        </div>
+
+                        {% if schema.description ?? '' %}
+                            <div class="analyzer-desc">{{ schema.description }}</div>
+                        {% endif %}
+
+                        <div class="analyzer-settings">
+                            <div class="priority-row">
+                                <span class="priority-label">Priorita:</span>
+                                {{ form_widget(child.priority, {
+                                    'attr': {
+                                        'class': 'priority-slider',
+                                        'oninput': 'this.nextElementSibling.textContent = this.value'
+                                    }
+                                }) }}
+                                <span class="priority-val">{{ child.priority.vars.value ?? 5 }}</span>
+                            </div>
+
+                            {% if child.ignoreCodes is defined and (schema.availableIssueCodes|default([]))|length > 0 %}
+                                <details class="advanced-settings">
+                                    <summary>Ignorovat kódy {% if (child.ignoreCodes.vars.value|default([]))|length > 0 %}({{ child.ignoreCodes.vars.value|length }}){% endif %}</summary>
+                                    <div class="ignore-codes-wrap">
+                                        {{ form_widget(child.ignoreCodes, {'attr': {'class': 'form-select form-select-sm', 'size': '4'}}) }}
+                                    </div>
+                                </details>
+                            {% endif %}
+
+                            {% if child.thresholds is defined and (schema.settings|default([]))|length > 0 %}
+                                <details class="advanced-settings">
+                                    <summary>Prahy</summary>
+                                    <div class="thresholds-wrap">
+                                        {% for thresholdKey, thresholdField in child.thresholds %}
+                                            <div class="threshold-row">
+                                                <label for="{{ thresholdField.vars.id }}">{{ thresholdField.vars.label }}</label>
+                                                {{ form_widget(thresholdField, {'attr': {'class': 'form-control form-control-sm'}}) }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <style>
+    .analyzer-config-grid .row {
+        margin: 0 -0.25rem;
+    }
+    .analyzer-card {
+        background: var(--bs-body-bg, #fff);
+        border: 1px solid var(--bs-border-color, #dee2e6);
+        border-radius: 6px;
+        padding: 10px 12px;
+        height: 100%;
+        transition: all 0.15s;
+    }
+    .analyzer-card.disabled {
+        opacity: 0.5;
+        background: var(--bs-tertiary-bg, #f8f9fa);
+    }
+    .analyzer-card:hover {
+        border-color: var(--bs-border-color-translucent, #adb5bd);
+    }
+    .analyzer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+    .analyzer-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        margin: 0;
+        flex: 1;
+        min-width: 0;
+    }
+    .analyzer-toggle input[type="checkbox"] {
+        margin: 0;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .analyzer-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--bs-body-color);
+    }
+    .analyzer-header .badge {
+        font-size: 0.6rem;
+        padding: 2px 4px;
+        flex-shrink: 0;
+    }
+    .analyzer-desc {
+        font-size: 0.7rem;
+        color: var(--bs-secondary-color, #6c757d);
+        line-height: 1.25;
+        margin-bottom: 6px;
+    }
+    .analyzer-settings {
+        border-top: 1px solid var(--bs-border-color, #eee);
+        padding-top: 6px;
+    }
+    .priority-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+    }
+    .priority-label {
+        color: var(--bs-secondary-color, #6c757d);
+        flex-shrink: 0;
+    }
+    .priority-slider {
+        flex: 1;
+        height: 4px;
+        cursor: pointer;
+        min-width: 60px;
+    }
+    .priority-val {
+        font-weight: 600;
+        color: var(--bs-primary, #0d6efd);
+        min-width: 16px;
+        text-align: right;
+    }
+    .advanced-settings {
+        margin-top: 6px;
+        font-size: 0.75rem;
+    }
+    .advanced-settings summary {
+        cursor: pointer;
+        color: var(--bs-secondary-color, #6c757d);
+        user-select: none;
+    }
+    .advanced-settings summary:hover {
+        color: var(--bs-body-color, #495057);
+    }
+    .advanced-settings[open] summary {
+        margin-bottom: 4px;
+    }
+    .ignore-codes-wrap select {
+        font-size: 0.7rem;
+        width: 100%;
+    }
+    .thresholds-wrap {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+    }
+    .threshold-row label {
+        display: block;
+        font-size: 0.65rem;
+        color: var(--bs-secondary-color, #6c757d);
+        margin-bottom: 1px;
+    }
+    .threshold-row input {
+        font-size: 0.75rem;
+        padding: 2px 4px;
+    }
+    </style>
+{% endif %}

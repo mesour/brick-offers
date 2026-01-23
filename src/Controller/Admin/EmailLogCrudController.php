@@ -127,6 +127,6 @@ class EmailLogCrudController extends AbstractTenantCrudController
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
-            ->hideOnIndex();
+            ->hideOnForm();
     }
 }

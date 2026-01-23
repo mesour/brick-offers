@@ -18,6 +18,13 @@ enum IssueCategory: string
     case ESHOP_DETECTION = 'eshop_detection';
     case OUTDATED_CODE = 'outdated_code';
     case DESIGN_MODERNITY = 'design_modernity';
+    case CMS_QUALITY = 'cms_quality';
+    case CONTENT_QUALITY = 'content_quality';
+    case BRANDING = 'branding';
+    case NAVIGATION_UX = 'navigation_ux';
+    case CONVERSION = 'conversion';
+    case LEGAL_COMPLIANCE = 'legal_compliance';
+    case TYPOGRAPHY = 'typography';
 
     // Industry-specific categories
     case INDUSTRY_ESHOP = 'industry_eshop';
@@ -26,6 +33,39 @@ enum IssueCategory: string
     case INDUSTRY_AUTOMOBILE = 'industry_automobile';
     case INDUSTRY_RESTAURANT = 'industry_restaurant';
     case INDUSTRY_MEDICAL = 'industry_medical';
+
+    /**
+     * Get human-readable label.
+     */
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::HTTP => 'HTTP & SSL',
+            self::SECURITY => 'Bezpečnost',
+            self::SEO => 'SEO',
+            self::LIBRARIES => 'Knihovny',
+            self::PERFORMANCE => 'Výkon',
+            self::RESPONSIVENESS => 'Responzivita',
+            self::VISUAL => 'Vizuální',
+            self::ACCESSIBILITY => 'Přístupnost',
+            self::ESHOP_DETECTION => 'Detekce e-shopu',
+            self::OUTDATED_CODE => 'Zastaralý kód',
+            self::DESIGN_MODERNITY => 'Modernost designu',
+            self::CMS_QUALITY => 'Kvalita CMS',
+            self::CONTENT_QUALITY => 'Kvalita obsahu',
+            self::BRANDING => 'Branding',
+            self::NAVIGATION_UX => 'Navigace a UX',
+            self::CONVERSION => 'Konverzní prvky',
+            self::LEGAL_COMPLIANCE => 'Právní náležitosti',
+            self::TYPOGRAPHY => 'Typografie',
+            self::INDUSTRY_ESHOP => 'E-shop specifické',
+            self::INDUSTRY_WEBDESIGN => 'Webdesign specifické',
+            self::INDUSTRY_REAL_ESTATE => 'Reality specifické',
+            self::INDUSTRY_AUTOMOBILE => 'Auto specifické',
+            self::INDUSTRY_RESTAURANT => 'Restaurace specifické',
+            self::INDUSTRY_MEDICAL => 'Zdravotnictví specifické',
+        };
+    }
 
     /**
      * Check if this category is industry-specific.

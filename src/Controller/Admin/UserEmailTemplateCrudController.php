@@ -26,9 +26,9 @@ class UserEmailTemplateCrudController extends AbstractTenantCrudController
     public function configureCrud(Crud $crud): Crud
     {
         return $crud
-            ->setEntityLabelInSingular('Uživatelská šablona')
-            ->setEntityLabelInPlural('Uživatelské šablony')
-            ->setSearchFields(['name', 'subject'])
+            ->setEntityLabelInSingular('Moje šablona')
+            ->setEntityLabelInPlural('Moje šablony')
+            ->setSearchFields(['name', 'subjectTemplate'])
             ->setDefaultSort(['createdAt' => 'DESC'])
             ->showEntityActionsInlined();
     }
@@ -50,29 +50,41 @@ class UserEmailTemplateCrudController extends AbstractTenantCrudController
             ->setLabel('Název')
             ->setRequired(true);
 
-        yield TextField::new('subject')
+        yield TextField::new('subjectTemplate')
             ->setLabel('Předmět')
-            ->setRequired(true);
+            ->setRequired(true)
+            ->setHelp('Můžete použít {{placeholdery}} pro dynamické hodnoty');
 
-        yield TextareaField::new('bodyHtml')
-            ->setLabel('HTML obsah')
-            ->hideOnIndex()
-            ->setNumOfRows(15);
+        if ($pageName === Crud::PAGE_DETAIL) {
+            yield TextareaField::new('bodyTemplate')
+                ->setLabel('HTML obsah')
+                ->setTemplatePath('admin/field/html_preview.html.twig');
+        } else {
+            yield TextareaField::new('bodyTemplate')
+                ->setLabel('HTML obsah')
+                ->hideOnIndex()
+                ->setNumOfRows(15)
+                ->setHelp('HTML šablona emailu s {{placeholdery}}');
+        }
 
-        yield TextareaField::new('bodyText')
-            ->setLabel('Textový obsah')
-            ->hideOnIndex()
-            ->setNumOfRows(10);
-
-        yield BooleanField::new('isDefault')
-            ->setLabel('Výchozí');
-
-        yield BooleanField::new('active')
+        yield BooleanField::new('isActive')
             ->setLabel('Aktivní');
 
         yield AssociationField::new('baseTemplate')
             ->setLabel('Základní šablona')
+            ->setRequired(false)
+            ->hideOnIndex()
+            ->setHelp('Volitelně vyberte systémovou šablonu jako základ');
+
+        yield BooleanField::new('aiPersonalizationEnabled')
+            ->setLabel('AI personalizace')
             ->hideOnIndex();
+
+        yield TextareaField::new('aiPersonalizationPrompt')
+            ->setLabel('AI prompt')
+            ->hideOnIndex()
+            ->setNumOfRows(5)
+            ->setHelp('Vlastní instrukce pro AI personalizaci');
 
         yield DateTimeField::new('createdAt')
             ->setLabel('Vytvořeno')
@@ -80,7 +92,6 @@ class UserEmailTemplateCrudController extends AbstractTenantCrudController
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
-            ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm();
     }
 }

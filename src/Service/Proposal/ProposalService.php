@@ -74,6 +74,13 @@ class ProposalService
         ?ProposalType $type = null,
         ?Analysis $analysis = null,
     ): Proposal {
+        // Validate: discovered leads must have an email
+        if ($lead->getSource()->isDiscovered() && empty($lead->getEmail())) {
+            throw new \LogicException(
+                'Cannot create proposal for discovered lead without email address'
+            );
+        }
+
         $industry = $lead->getIndustry() ?? Industry::OTHER;
         $analysis ??= $lead->getLatestAnalysis();
 

@@ -525,4 +525,9 @@ class DemandSignal
             $this->status = DemandSignalStatus::EXPIRED;
         }
     }
+
+    public function __toString(): string
+    {
+        return $this->title ?? (string) $this->id;
+    }
 }

@@ -11,6 +11,8 @@ use Symfony\Component\Uid\Uuid;
  *
  * Dispatched when a lead needs analysis (new lead, re-analysis request).
  * Processed by AnalyzeLeadMessageHandler.
+ *
+ * When profileId is provided, analyzer configurations from the profile are used.
  */
 final readonly class AnalyzeLeadMessage
 {
@@ -18,5 +20,6 @@ final readonly class AnalyzeLeadMessage
         public Uuid $leadId,
         public bool $reanalyze = false,
         public ?string $industryFilter = null,
+        public ?Uuid $profileId = null,
     ) {}
 }

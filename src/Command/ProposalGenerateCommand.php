@@ -46,6 +46,7 @@ class ProposalGenerateCommand extends Command
             ->addOption('user', 'u', InputOption::VALUE_REQUIRED, 'User code (required)')
             ->addOption('type', 't', InputOption::VALUE_REQUIRED, 'Proposal type (design_mockup, marketing_audit, etc.)')
             ->addOption('batch', 'b', InputOption::VALUE_NONE, 'Process pending proposals in batch')
+            ->addOption('from-leads', null, InputOption::VALUE_NONE, 'Create and generate proposals from analyzed leads')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Limit for batch processing', '10')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be generated without executing')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Force regeneration even if proposal exists')
@@ -62,6 +63,10 @@ class ProposalGenerateCommand extends Command
 
         if ($input->getOption('batch')) {
             return $this->processBatch($io, $input, $dryRun, $async);
+        }
+
+        if ($input->getOption('from-leads')) {
+            return $this->createFromLeads($io, $input, $dryRun, $async);
         }
 
         // Single proposal generation
@@ -324,6 +329,118 @@ class ProposalGenerateCommand extends Command
 
             return Command::FAILURE;
         }
+    }
+
+    private function createFromLeads(SymfonyStyle $io, InputInterface $input, bool $dryRun, bool $async): int
+    {
+        $userCode = $input->getOption('user');
+        $limit = (int) $input->getOption('limit');
+
+        if (!$userCode) {
+            $io->error('--user is required');
+
+            return Command::FAILURE;
+        }
+
+        $user = $this->userRepository->findOneBy(['code' => $userCode]);
+        if (!$user) {
+            $io->error(sprintf('User not found: %s', $userCode));
+
+            return Command::FAILURE;
+        }
+
+        // Determine proposal type
+        $type = null;
+        if ($input->getOption('type')) {
+            $type = ProposalType::tryFrom($input->getOption('type'));
+        }
+
+        $io->section('Creating Proposals from Analyzed Leads');
+
+        // Find analyzed leads without proposals
+        $subQuery = $this->proposalRepository->createQueryBuilder('p')
+            ->select('IDENTITY(p.lead)')
+            ->where('p.lead IS NOT NULL')
+            ->getDQL();
+
+        $qb = $this->leadRepository->createQueryBuilder('l')
+            ->where('l.latestAnalysis IS NOT NULL')
+            ->andWhere('l.status != :dismissed')
+            ->andWhere('l.id NOT IN (' . $subQuery . ')')
+            // Exclude discovered leads without email (can't contact them)
+            ->andWhere('l.source = :manual OR l.email IS NOT NULL')
+            ->setParameter('dismissed', \App\Enum\LeadStatus::DISMISSED)
+            ->setParameter('manual', \App\Enum\LeadSource::MANUAL)
+            ->orderBy('l.score', 'DESC')
+            ->setMaxResults($limit);
+
+        $leads = $qb->getQuery()->getResult();
+
+        if (empty($leads)) {
+            $io->success('No analyzed leads without proposals found');
+
+            return Command::SUCCESS;
+        }
+
+        $io->text(sprintf('Found %d leads ready for proposal generation', count($leads)));
+
+        if ($dryRun) {
+            foreach ($leads as $lead) {
+                $io->text(sprintf(
+                    '  - %s (score: %d)',
+                    $lead->getDomain() ?? $lead->getId()?->toRfc4122(),
+                    $lead->getScore() ?? 0
+                ));
+            }
+            $io->success('Dry run - no proposals created');
+
+            return Command::SUCCESS;
+        }
+
+        $created = 0;
+        $failed = 0;
+
+        foreach ($leads as $lead) {
+            $io->text(sprintf(
+                'Processing: %s',
+                $lead->getDomain() ?? $lead->getId()?->toRfc4122()
+            ));
+
+            try {
+                if ($async) {
+                    $leadId = $lead->getId();
+                    $userId = $user->getId();
+                    $industry = $lead->getIndustry();
+                    $generator = $this->proposalService->getGenerator($industry ?? \App\Enum\Industry::OTHER);
+                    $proposalType = $type ?? $generator?->getProposalType();
+
+                    if ($leadId === null || $userId === null || $proposalType === null) {
+                        $io->warning('Skipping: Missing required IDs or type');
+                        $failed++;
+                        continue;
+                    }
+
+                    $message = new GenerateProposalMessage(
+                        leadId: $leadId,
+                        userId: $userId,
+                        proposalType: $proposalType->value,
+                        analysisId: $lead->getLatestAnalysis()?->getId(),
+                    );
+
+                    $this->messageBus->dispatch($message);
+                } else {
+                    $this->proposalService->createAndGenerate($lead, $user, $type);
+                }
+                $created++;
+            } catch (\Throwable $e) {
+                $io->warning(sprintf('Failed: %s', $e->getMessage()));
+                $failed++;
+            }
+        }
+
+        $io->success(sprintf('Created: %d, Failed: %d', $created, $failed));
+
+        return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 
     private function processBatch(SymfonyStyle $io, InputInterface $input, bool $dryRun, bool $async): int

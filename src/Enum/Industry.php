@@ -65,6 +65,14 @@ enum Industry: string
     }
 
     /**
+     * Alias for getLabel() for consistency with other enums.
+     */
+    public function label(): string
+    {
+        return $this->getLabel();
+    }
+
+    /**
      * Get all available industries as choices array.
      *
      * @return array<string, string>

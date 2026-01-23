@@ -613,4 +613,9 @@ class Offer
 
         return $this;
     }
+
+    public function __toString(): string
+    {
+        return $this->subject ?? sprintf('Offer #%s', $this->id?->toBase58() ?? 'new');
+    }
 }

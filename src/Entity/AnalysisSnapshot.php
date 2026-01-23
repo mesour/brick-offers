@@ -47,7 +47,7 @@ class AnalysisSnapshot
     #[ORM\CustomIdGenerator(class: 'doctrine.uuid_generator')]
     private ?Uuid $id = null;
 
-    #[ORM\ManyToOne(targetEntity: Lead::class)]
+    #[ORM\ManyToOne(targetEntity: Lead::class, inversedBy: 'snapshots')]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?Lead $lead = null;
 

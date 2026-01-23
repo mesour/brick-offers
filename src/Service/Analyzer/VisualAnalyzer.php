@@ -24,6 +24,11 @@ class VisualAnalyzer extends AbstractBrowserAnalyzer
         return 70; // After responsiveness
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje vizuální konzistenci: padding, fonty, velikosti písma a kvalitu obrázků.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

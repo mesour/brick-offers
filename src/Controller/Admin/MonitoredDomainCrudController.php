@@ -5,17 +5,25 @@ declare(strict_types=1);
 namespace App\Controller\Admin;
 
 use App\Entity\MonitoredDomain;
-use App\Entity\User;
+use App\Enum\CrawlFrequency;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\UrlField;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+/**
+ * Admin controller for globally monitored domains.
+ * Only accessible by super admins. Regular domain management is done via CLI.
+ */
+#[IsGranted('ROLE_SUPER_ADMIN')]
 class MonitoredDomainCrudController extends AbstractCrudController
 {
     public static function getEntityFqcn(): string
@@ -41,10 +49,7 @@ class MonitoredDomainCrudController extends AbstractCrudController
         return $actions
             ->add(Crud::PAGE_INDEX, Action::DETAIL)
             ->add(Crud::PAGE_INDEX, $checkNowAction)
-            ->add(Crud::PAGE_DETAIL, $checkNowAction)
-            ->setPermission(Action::NEW, User::PERMISSION_COMPETITORS_MANAGE)
-            ->setPermission(Action::EDIT, User::PERMISSION_COMPETITORS_MANAGE)
-            ->setPermission(Action::DELETE, User::PERMISSION_COMPETITORS_MANAGE);
+            ->add(Crud::PAGE_DETAIL, $checkNowAction);
     }
 
     public function configureFields(string $pageName): iterable
@@ -62,18 +67,22 @@ class MonitoredDomainCrudController extends AbstractCrudController
         yield BooleanField::new('active')
             ->setLabel('Aktivní');
 
-        yield TextField::new('checkFrequency')
+        yield ChoiceField::new('crawlFrequency')
             ->setLabel('Frekvence kontroly')
-            ->hideOnIndex();
+            ->setChoices([
+                'Denně' => CrawlFrequency::DAILY,
+                'Týdně' => CrawlFrequency::WEEKLY,
+                'Dvoutýdně' => CrawlFrequency::BIWEEKLY,
+                'Měsíčně' => CrawlFrequency::MONTHLY,
+            ]);
 
-        yield DateTimeField::new('lastCheckedAt')
-            ->setLabel('Poslední kontrola')
+        yield IntegerField::new('subscriberCount')
+            ->setLabel('Odběratelé')
             ->hideOnForm();
 
-        yield DateTimeField::new('nextCheckAt')
-            ->setLabel('Další kontrola')
-            ->hideOnForm()
-            ->hideOnIndex();
+        yield DateTimeField::new('lastCrawledAt')
+            ->setLabel('Poslední kontrola')
+            ->hideOnForm();
 
         yield DateTimeField::new('createdAt')
             ->setLabel('Vytvořeno')

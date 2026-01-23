@@ -7,7 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **MonitoredDomain Architecture Refactoring** - Oddělení globálních domén od uživatelských odběrů
+  - `MonitoredDomain` je nyní globální entita spravovaná přes CLI
+  - `MonitoredDomainSubscription` zůstává per-tenant (uživatelské odběry)
+  - Nový CLI příkaz `app:monitor:domain` pro správu domén (add, remove, update, list)
+  - Admin panel pro `MonitoredDomain` omezen na ROLE_SUPER_ADMIN
+  - Migrace odstraňuje `user_id` sloupec a řeší duplicitní záznamy
+
 ### Added
+- **Contact Page Crawling** - Automatické prohledávání kontaktních stránek pro emaily
+  - `PageDataExtractor::extractWithContactPages()` - crawluje kontakt/about stránky
+  - Hledá CZ odkazy (`/kontakt`, `/o-nas`), EN (`/contact`, `/about`) a DE (`/impressum`)
+  - Navštíví až 3 kontaktní stránky a sloučí nalezené emaily/telefony
+  - Integrováno do discovery sources - standardně povoleno
+  - `AbstractDiscoverySource::setContactPageCrawlingEnabled()` pro vypnutí
+
+- **Auto Snapshots & Screenshots** - Automatické vytváření při analýze leadu
+  - `AnalyzeLeadMessageHandler` rozšířen o automatické snapshot/screenshot triggery
+  - Po dokončení analýzy se vytvoří `AnalysisSnapshot` pro trending a historii
+  - Po analýze se asynchronně dispatchuje `TakeScreenshotMessage` pro vizuální archivaci
+  - Snapshot se vytváří pouze při úspěšné analýze (`AnalysisStatus::COMPLETED`)
+
+- **Intuitivní konfigurace analyzérů** - UI pro Discovery Profile místo JSON textarea
+  - `LeadAnalyzerInterface` rozšířen o `getName()`, `getDescription()`, `getConfigurableSettings()`
+  - `AnalyzerConfigService` pro správu schémat analyzérů a jejich metadata
+  - Custom `AnalyzerConfigField` pro EasyAdmin s collapsible panels
+  - Form types: `AnalyzerConfigType`, `AnalyzerItemType`, `ThresholdsType`
+  - Checkbox pro enable/disable analyzéru, slider pro prioritu
+  - Multi-select pro ignorování issue kódů
+  - Dynamické thresholds (např. PerformanceAnalyzer: LCP, FCP, CLS, TTFB)
+  - Badge pro označení univerzální vs industry-specific analyzérů
+
+- **Discovery Profiles** - Named profiles combining discovery settings, analyzer configuration, and industry
+  - `DiscoveryProfile` entity with discovery settings (sources, queries, limits) and analyzer configs
+  - Profile-based batch discovery with auto-analyze support
+  - Admin CRUD controller with Duplicate and Set as Default actions
+  - CLI commands for profile-based discovery:
+    - `app:discovery:batch --profile=NAME` - run specific profile
+    - `app:discovery:migrate-profiles` - migrate legacy user settings
+  - Updated message handlers to use profile configurations
+  - Analyzer configs with ignoreCodes and priority overrides
+  - Backward compatibility with legacy User.settings['discovery']
+
+- **Admin Documentation** - Uživatelská dokumentace pro admin rozhraní v češtině
+  - `docs/admin/README.md` - přehled admin panelu, navigace, základní workflow
+  - `docs/admin/lead-pipeline.md` - dokumentace Lead Pipeline sekce
+  - `docs/admin/workflow.md` - dokumentace Návrhy a Nabídky
+  - `docs/admin/email.md` - dokumentace Email management
+  - `docs/admin/monitoring.md` - dokumentace Monitoring domén a konkurence
+  - `docs/admin/configuration.md` - dokumentace Nastavení a uživatelé
+  - `docs/admin/permissions.md` - přehled 20 oprávnění a rolí
+
+- **User Industry Configuration** - Industry-based access control and session-based switching
+  - `allowedIndustries` field on User entity (JSON array of Industry enum values)
+  - Sub-users inherit industries from admin account
+  - CLI command `app:user:set-industries` for managing allowed industries
+  - `CurrentIndustryService` for session-based industry selection
+  - `IndustryExtension` Twig extension with globals and functions
+  - Industry switcher dropdown in admin header
+  - `data-industry` attribute on `<body>` for CSS styling hooks
+  - EasyAdmin layout override for switcher integration
+- **PermissionVoter** - Symfony Voter pro propojení EasyAdmin permissions s User::hasPermission()
+- **Entity __toString() methods** - Lead, Analysis, Company, EmailTemplate, MonitoredDomain, Offer, Proposal
+
+### Changed
+- **Discovery Profile Admin** - Přejmenován tab "Analýza nastavení" na "Nastavení analýzy"
+- **Admin Module** - Vylepšený multi-tenancy systém:
+  - Kompletní tenant filtering pro všechny CRUD controllery
+  - Automatické nastavení user při vytváření entit
+  - Skrytí pole user ve formulářích (nastavuje se automaticky)
+  - Zjednodušené formuláře: Lead (pouze URL), Company (pouze IČO)
+  - Proposal - zakázáno manuální vytváření (AI-generated)
+  - EmailTemplate - změněno na read-only (systémové šablony)
+  - Přejmenování menu: "Systémové šablony", "Moje šablony"
+
+### Fixed
+- Nginx Unit port mismatch (80 → 8080) a cesta (www → public)
+- UUID toBinary() PostgreSQL encoding error v tenant filtering
+- Chybějící __toString() způsobující "could not be converted to string"
+- Špatné názvy polí v EmailTemplateCrudController a UserEmailTemplateCrudController
+
+---
+
 - **Admin Module** - Complete EasyAdmin dashboard for entity management
   - EasyAdmin 4.x integration with custom dashboard
   - User authentication with form login and remember-me

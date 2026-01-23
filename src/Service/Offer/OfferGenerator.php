@@ -22,26 +22,27 @@ use Psr\Log\LoggerInterface;
 class OfferGenerator
 {
     private const DEFAULT_PERSONALIZATION_PROMPT = <<<'PROMPT'
-You are personalizing an outreach email. Make the email more engaging and personal while keeping the core message.
+Personalizuj oslovující email pro českého klienta. Uprav email tak, aby byl osobnější a poutavější, ale zachovej hlavní sdělení.
+VŠECHNY TEXTY MUSÍ BÝT V ČEŠTINĚ.
 
-Guidelines:
-- Keep the same structure and key information
-- Add relevant personalization based on the company and their website issues
-- Maintain professional tone
-- Do not add false claims or promises
-- Keep the email concise
+Pravidla:
+- Zachovej stejnou strukturu a klíčové informace
+- Přidej relevantní personalizaci na základě firmy a nalezených problémů webu
+- Udržuj profesionální tón
+- Nepřidávej nepravdivá tvrzení ani sliby
+- Zachovej email stručný a věcný
 
-Company info:
-- Domain: {{domain}}
-- Company: {{company_name}}
-- Industry: {{industry}}
-- Website Score: {{total_score}}/100
-- Issues found: {{issues_count}}
+Informace o firmě:
+- Doména: {{domain}}
+- Firma: {{company_name}}
+- Odvětví: {{industry}}
+- Skóre webu: {{total_score}}/100
+- Nalezené problémy: {{issues_count}}
 
-Original email:
+Původní email:
 {{original_content}}
 
-Return only the personalized email body (HTML), without any explanation.
+Vrať pouze personalizované tělo emailu (HTML), bez jakéhokoliv vysvětlení.
 PROMPT;
 
     public function __construct(
@@ -168,7 +169,7 @@ PROMPT;
             'issues_count' => '0',
             'critical_issues_count' => '0',
             'top_issues' => '',
-            'industry' => $lead->getIndustry()?->label() ?? 'General',
+            'industry' => $lead->getIndustry()?->getLabel() ?? 'General',
 
             // Proposal data
             'proposal_title' => '',
@@ -246,7 +247,7 @@ PROMPT;
         $promptVariables = [
             'domain' => $lead->getDomain() ?? '',
             'company_name' => $lead->getCompanyName() ?? $lead->getCompany()?->getName() ?? '',
-            'industry' => $lead->getIndustry()?->label() ?? 'General',
+            'industry' => $lead->getIndustry()?->getLabel() ?? 'General',
             'total_score' => (string) ($analysis?->getTotalScore() ?? 0),
             'issues_count' => (string) ($analysis?->getIssueCount() ?? 0),
             'original_content' => $body,

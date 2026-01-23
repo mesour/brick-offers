@@ -32,6 +32,11 @@ class MedicalAnalyzer extends AbstractLeadAnalyzer
         return [Industry::MEDICAL];
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje online objednání, přehled služeb, profily lékařů.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

@@ -198,7 +198,7 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
 
                     // Prefer actual website URL over firmy.cz detail page
                     if ($websiteUrl !== null) {
-                        $results[] = new DiscoveryResult($websiteUrl, [
+                        $results[] = $this->createResultWithExtraction($websiteUrl, [
                             'business_name' => $businessName,
                             'query' => $query,
                             'source_type' => 'firmy_cz_direct',
@@ -206,6 +206,7 @@ class FirmyCzDiscoverySource extends AbstractDiscoverySource
                         ]);
                     } elseif ($detailUrl !== null && $businessName !== null) {
                         // Fallback: store detail page for later website extraction
+                        // Note: don't extract from firmy.cz pages, only from actual websites
                         $results[] = new DiscoveryResult($detailUrl, [
                             'business_name' => $businessName,
                             'query' => $query,

@@ -32,6 +32,11 @@ class RealEstateAnalyzer extends AbstractLeadAnalyzer
         return [Industry::REAL_ESTATE];
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje nabídky nemovitostí, filtry vyhledávání, kontakty na makléře.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

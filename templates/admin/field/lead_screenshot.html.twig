@@ -1,0 +1,28 @@
+{# templates/admin/field/lead_screenshot.html.twig #}
+{% set lead = entity.instance %}
+{% set metadata = lead.metadata %}
+{% set screenshotPath = metadata.screenshot_path ?? null %}
+{% set screenshotTakenAt = metadata.screenshot_taken_at ?? null %}
+
+{% if screenshotPath %}
+    <div class="lead-screenshot">
+        <div class="mb-2">
+            <img src="{{ asset('screenshots/' ~ screenshotPath) }}"
+                 alt="Screenshot {{ lead.domain }}"
+                 class="img-fluid border rounded shadow-sm"
+                 style="max-width: 100%; max-height: 400px; cursor: pointer;"
+                 onclick="window.open(this.src, '_blank')">
+        </div>
+        {% if screenshotTakenAt %}
+            <small class="text-muted">
+                Porizeno: {{ screenshotTakenAt|date('d.m.Y H:i') }}
+            </small>
+        {% endif %}
+    </div>
+{% else %}
+    <p class="text-muted">
+        Screenshot nebyl pořízen.
+        <br>
+        <small>Spustte: <code>bin/console app:leads:screenshot --lead-id={{ lead.id }}</code></small>
+    </p>
+{% endif %}

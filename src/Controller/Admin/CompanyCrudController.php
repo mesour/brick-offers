@@ -5,11 +5,17 @@ declare(strict_types=1);
 namespace App\Controller\Admin;
 
 use App\Entity\Company;
+use App\Entity\User;
+use Doctrine\ORM\QueryBuilder;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
@@ -17,6 +23,38 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 
 class CompanyCrudController extends AbstractCrudController
 {
+    public function createIndexQueryBuilder(
+        SearchDto $searchDto,
+        EntityDto $entityDto,
+        FieldCollection $fields,
+        FilterCollection $filters
+    ): QueryBuilder {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters);
+
+        $user = $this->getUser();
+        if (!$user instanceof User) {
+            return $qb;
+        }
+
+        $alias = $qb->getRootAliases()[0];
+        $qb->join(sprintf('%s.leads', $alias), 'leads');
+
+        if ($user->isAdmin()) {
+            $tenantUsers = $user->getTenantUsers();
+            $userIds = array_map(static fn (User $u) => $u->getId(), $tenantUsers);
+            $qb->andWhere('leads.user IN (:tenantUsers)')
+                ->setParameter('tenantUsers', $userIds);
+        } else {
+            $qb->andWhere('leads.user = :currentUser')
+                ->setParameter('currentUser', $user->getId());
+        }
+
+        // Use GROUP BY instead of DISTINCT - PostgreSQL can't compare JSON columns
+        $qb->groupBy(sprintf('%s.id', $alias));
+
+        return $qb;
+    }
+
     public static function getEntityFqcn(): string
     {
         return Company::class;
@@ -53,38 +91,48 @@ class CompanyCrudController extends AbstractCrudController
 
     public function configureFields(string $pageName): iterable
     {
+        $isNew = $pageName === Crud::PAGE_NEW;
+
         yield IdField::new('id')->hideOnForm()->setMaxLength(8);
 
-        yield TextField::new('ico')
+        $icoField = TextField::new('ico')
             ->setLabel('IČO')
             ->setRequired(true);
-
-        yield TextField::new('dic')
-            ->setLabel('DIČ')
-            ->hideOnIndex();
+        if ($isNew) {
+            $icoField->setHelp('Zadejte IČO firmy. Ostatní údaje se doplní automaticky z ARES.');
+        }
+        yield $icoField;
 
         yield TextField::new('name')
             ->setLabel('Název')
-            ->setRequired(true);
-
-        yield TextField::new('legalForm')
-            ->setLabel('Právní forma')
-            ->hideOnIndex();
-
-        yield TextField::new('street')
-            ->setLabel('Ulice')
-            ->hideOnIndex();
+            ->hideWhenCreating();
 
         yield TextField::new('city')
-            ->setLabel('Město');
+            ->setLabel('Město')
+            ->hideWhenCreating();
 
-        yield TextField::new('postalCode')
-            ->setLabel('PSČ')
-            ->hideOnIndex();
+        // Následující pole jsou skrytá při vytváření a v indexu - doplní se z ARES
+        if (!$isNew) {
+            yield TextField::new('dic')
+                ->setLabel('DIČ')
+                ->hideOnIndex();
 
-        yield TextField::new('businessStatus')
-            ->setLabel('Status')
-            ->hideOnIndex();
+            yield TextField::new('legalForm')
+                ->setLabel('Právní forma')
+                ->hideOnIndex();
+
+            yield TextField::new('street')
+                ->setLabel('Ulice')
+                ->hideOnIndex();
+
+            yield TextField::new('postalCode')
+                ->setLabel('PSČ')
+                ->hideOnIndex();
+
+            yield TextField::new('businessStatus')
+                ->setLabel('Status')
+                ->hideOnIndex();
+        }
 
         yield TextField::new('fullAddress')
             ->setLabel('Adresa')

@@ -12,6 +12,7 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
+use App\Enum\Industry;
 use App\Repository\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -21,6 +22,7 @@ use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
@@ -30,6 +32,8 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[ORM\Index(name: 'users_name_idx', columns: ['name'])]
 #[ORM\Index(name: 'users_admin_account_idx', columns: ['admin_account_id'])]
 #[ORM\HasLifecycleCallbacks]
+#[UniqueEntity(fields: ['code'], message: 'Uživatel s tímto kódem již existuje.')]
+#[UniqueEntity(fields: ['email'], message: 'Uživatel s tímto emailem již existuje.')]
 #[ApiResource(
     operations: [
         new GetCollection(),
@@ -149,6 +153,11 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $password = null;
 
+    /**
+     * Plain password for form handling (not persisted).
+     */
+    private ?string $plainPassword = null;
+
     /** @var array<string> */
     #[ORM\Column(type: Types::JSON)]
     private array $roles = [self::ROLE_USER];
@@ -185,12 +194,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: Types::JSON)]
     private array $limits = [];
 
+    /**
+     * Industry for this user (set via CLI, sub-users inherit from admin).
+     */
+    #[ORM\Column(type: Types::STRING, length: 50, nullable: true, enumType: Industry::class)]
+    private ?Industry $industry = null;
+
     #[ORM\Column(type: Types::BOOLEAN, options: ['default' => true])]
     private bool $active = true;
 
     /** @var array<string, mixed> */
     #[ORM\Column(type: Types::JSON)]
     private array $settings = [];
+
+    /**
+     * Domain patterns to exclude from discovery results.
+     * Supports wildcards: *.example.com, example.*, *example*
+     * Sub-users inherit patterns from admin account.
+     *
+     * @var array<string>
+     */
+    #[ORM\Column(type: Types::JSON)]
+    private array $excludedDomains = [];
 
     // === VZTAHY ===
 
@@ -201,10 +226,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     /** @var Collection<int, IndustryBenchmark> */
     #[ORM\OneToMany(targetEntity: IndustryBenchmark::class, mappedBy: 'user')]
     private Collection $industryBenchmarks;
-
-    /** @var Collection<int, UserAnalyzerConfig> */
-    #[ORM\OneToMany(targetEntity: UserAnalyzerConfig::class, mappedBy: 'user', cascade: ['persist', 'remove'])]
-    private Collection $analyzerConfigs;
 
     /** @var Collection<int, UserCompanyNote> */
     #[ORM\OneToMany(targetEntity: UserCompanyNote::class, mappedBy: 'user', cascade: ['persist', 'remove'])]
@@ -226,6 +247,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: EmailTemplate::class, mappedBy: 'user', cascade: ['persist', 'remove'])]
     private Collection $emailTemplates;
 
+    /** @var Collection<int, DiscoveryProfile> */
+    #[ORM\OneToMany(targetEntity: DiscoveryProfile::class, mappedBy: 'user', cascade: ['persist', 'remove'])]
+    private Collection $discoveryProfiles;
+
     // === TIMESTAMPS ===
 
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
@@ -238,12 +263,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         $this->leads = new ArrayCollection();
         $this->industryBenchmarks = new ArrayCollection();
-        $this->analyzerConfigs = new ArrayCollection();
         $this->companyNotes = new ArrayCollection();
         $this->monitoredDomainSubscriptions = new ArrayCollection();
         $this->demandSignalSubscriptions = new ArrayCollection();
         $this->marketWatchFilters = new ArrayCollection();
         $this->emailTemplates = new ArrayCollection();
+        $this->discoveryProfiles = new ArrayCollection();
         $this->subAccounts = new ArrayCollection();
     }
 
@@ -312,6 +337,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    public function getPlainPassword(): ?string
+    {
+        return $this->plainPassword;
+    }
+
+    public function setPlainPassword(?string $plainPassword): static
+    {
+        $this->plainPassword = $plainPassword;
+
+        return $this;
+    }
+
     /** @return array<string> */
     public function getRoles(): array
     {
@@ -332,7 +369,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function eraseCredentials(): void
     {
-        // If you store any temporary, sensitive data on the user, clear it here
+        // Clear the plain password after authentication
+        $this->plainPassword = null;
     }
 
     // Admin/Sub-account methods
@@ -536,6 +574,40 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    // Industry (set via CLI, inherited by sub-users)
+
+    /**
+     * Get industry for this user.
+     * Sub-users inherit from admin account.
+     */
+    public function getIndustry(): ?Industry
+    {
+        // Sub-users inherit industry from admin
+        if ($this->adminAccount !== null) {
+            return $this->adminAccount->getIndustry();
+        }
+
+        return $this->industry;
+    }
+
+    /**
+     * Set industry for this user.
+     */
+    public function setIndustry(?Industry $industry): static
+    {
+        $this->industry = $industry;
+
+        return $this;
+    }
+
+    /**
+     * Check if user has an industry set.
+     */
+    public function hasIndustry(): bool
+    {
+        return $this->getIndustry() !== null;
+    }
+
     public function isActive(): bool
     {
         return $this->active;
@@ -574,6 +646,72 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    // Excluded domains (for discovery filtering)
+
+    /**
+     * Get excluded domain patterns.
+     * Sub-users inherit patterns from admin account.
+     *
+     * @return array<string>
+     */
+    public function getExcludedDomains(): array
+    {
+        // Sub-users inherit excluded domains from admin
+        if ($this->adminAccount !== null) {
+            return array_values(array_unique(array_merge(
+                $this->adminAccount->getExcludedDomains(),
+                $this->excludedDomains
+            )));
+        }
+
+        return $this->excludedDomains;
+    }
+
+    /**
+     * Get only this user's excluded domains (without inheritance).
+     *
+     * @return array<string>
+     */
+    public function getOwnExcludedDomains(): array
+    {
+        return $this->excludedDomains;
+    }
+
+    /**
+     * @param array<string> $excludedDomains
+     */
+    public function setExcludedDomains(array $excludedDomains): static
+    {
+        $this->excludedDomains = $excludedDomains;
+
+        return $this;
+    }
+
+    /**
+     * Get excluded domains as text (one pattern per line).
+     * For admin UI textarea.
+     */
+    public function getExcludedDomainsText(): string
+    {
+        return implode("\n", $this->excludedDomains);
+    }
+
+    /**
+     * Set excluded domains from text (one pattern per line).
+     * For admin UI textarea.
+     */
+    public function setExcludedDomainsText(?string $text): static
+    {
+        if ($text === null || $text === '') {
+            $this->excludedDomains = [];
+        } else {
+            $lines = explode("\n", $text);
+            $this->excludedDomains = array_values(array_filter(array_map('trim', $lines)));
+        }
+
+        return $this;
+    }
+
     /** @return Collection<int, Lead> */
     public function getLeads(): Collection
     {
@@ -584,12 +722,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function getIndustryBenchmarks(): Collection
     {
         return $this->industryBenchmarks;
-    }
-
-    /** @return Collection<int, UserAnalyzerConfig> */
-    public function getAnalyzerConfigs(): Collection
-    {
-        return $this->analyzerConfigs;
     }
 
     /** @return Collection<int, UserCompanyNote> */
@@ -620,6 +752,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function getEmailTemplates(): Collection
     {
         return $this->emailTemplates;
+    }
+
+    /** @return Collection<int, DiscoveryProfile> */
+    public function getDiscoveryProfiles(): Collection
+    {
+        return $this->discoveryProfiles;
     }
 
     public function getCreatedAt(): ?\DateTimeImmutable

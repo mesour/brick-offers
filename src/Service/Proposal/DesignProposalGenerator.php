@@ -105,42 +105,44 @@ class DesignProposalGenerator extends AbstractProposalGenerator
         string $industry
     ): string {
         return <<<PROMPT
-You are a professional web designer creating a modern website redesign proposal.
+Jsi profesionální webový designér, který vytváří návrh redesignu webu pro českého klienta.
+VŠECHNY TEXTY MUSÍ BÝT V ČEŠTINĚ.
 
-## Website Information
-- Domain: {$domain}
-- Company: {$companyName}
-- Industry: {$industry}
-- Current Score: {$score}/100
+## Informace o webu
+- Doména: {$domain}
+- Firma: {$companyName}
+- Odvětví: {$industry}
+- Aktuální skóre: {$score}/100
 
-## Current Issues Found
+## Nalezené problémy
 {$issuesSummary}
 
-## Your Task
-Create a modern, responsive HTML mockup that addresses the issues above. The design should:
-1. Be mobile-first and fully responsive
-2. Follow modern web design best practices
-3. Include proper semantic HTML
-4. Have clean, modern CSS
-5. Address the accessibility issues found
-6. Improve the overall user experience
+## Tvůj úkol
+Vytvoř moderní, responzivní HTML mockup, který řeší výše uvedené problémy. Design by měl:
+1. Být mobile-first a plně responzivní
+2. Dodržovat moderní webdesign best practices
+3. Obsahovat správné sémantické HTML
+4. Mít čistý, moderní CSS
+5. Řešit nalezené problémy s přístupností
+6. Zlepšit celkový uživatelský zážitek
 
-## Output Format
-Provide your response in the following JSON format:
+## Formát výstupu
+Odpověz v následujícím JSON formátu:
 ```json
 {
-    "title": "Modern Redesign for {company}",
-    "summary": "Brief 2-3 sentence summary of the redesign approach",
-    "html": "<!DOCTYPE html>... complete HTML with embedded CSS ..."
+    "title": "Moderní redesign pro {company}",
+    "summary": "Stručné shrnutí přístupu k redesignu (2-3 věty česky)",
+    "html": "<!DOCTYPE html>... kompletní HTML s vloženým CSS ..."
 }
 ```
 
-Important:
-- The HTML must be complete and self-contained (CSS embedded in <style> tags)
-- Use modern CSS (flexbox, grid, CSS variables)
-- Include responsive breakpoints
-- Use a professional color scheme
-- Keep the design clean and modern
+DŮLEŽITÉ:
+- HTML musí být kompletní a samostatné (CSS vložené v <style> tazích)
+- Použij moderní CSS (flexbox, grid, CSS proměnné)
+- Zahrň responzivní breakpointy
+- Použij profesionální barevné schéma
+- Zachovej čistý a moderní design
+- VŠECHNY TEXTY V HTML MUSÍ BÝT ČESKY (navigace, tlačítka, nadpisy, obsah)
 PROMPT;
     }
 

@@ -10,6 +10,7 @@ use App\Enum\DemandSignalSource;
 use App\Repository\DemandSignalRepository;
 use App\Service\Demand\DemandSignalResult;
 use App\Service\Demand\DemandSignalSourceInterface;
+use App\Service\Demand\DemandSignalSubscriptionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -30,6 +31,7 @@ class DemandMonitorCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly DemandSignalRepository $demandSignalRepository,
+        private readonly DemandSignalSubscriptionService $subscriptionService,
         iterable $sources,
     ) {
         parent::__construct();
@@ -115,6 +117,10 @@ class DemandMonitorCommand extends Command
         $totalNew = 0;
         $totalDuplicate = 0;
         $totalFailed = 0;
+        $totalSubscriptions = 0;
+
+        /** @var DemandSignal[] $newSignals */
+        $newSignals = [];
 
         foreach ($sourcesToUse as $sourceType) {
             $source = $this->getSourceImplementation($sourceType);
@@ -145,6 +151,7 @@ class DemandMonitorCommand extends Command
 
                     if (!$dryRun) {
                         $this->entityManager->persist($signal);
+                        $newSignals[] = $signal;
                     }
 
                     $totalNew++;
@@ -172,11 +179,29 @@ class DemandMonitorCommand extends Command
             $this->entityManager->flush();
         }
 
+        // Create subscriptions for new signals
+        if (!$dryRun && !empty($newSignals)) {
+            $io->section('Creating subscriptions for matching filters');
+
+            foreach ($newSignals as $signal) {
+                $subscriptions = $this->subscriptionService->createSubscriptionsForSignal($signal);
+                $subscriptionCount = count($subscriptions);
+                $totalSubscriptions += $subscriptionCount;
+
+                if ($output->isVerbose() && $subscriptionCount > 0) {
+                    $io->text("  {$signal->getTitle()}: {$subscriptionCount} subscription(s)");
+                }
+            }
+
+            $this->entityManager->flush();
+        }
+
         // Summary
         $io->newLine();
         $io->success([
             "Discovery complete!",
             "New signals: {$totalNew}",
+            "Subscriptions created: {$totalSubscriptions}",
             "Duplicates skipped: {$totalDuplicate}",
             "Failed sources: {$totalFailed}",
         ]);

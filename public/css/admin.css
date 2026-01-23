@@ -53,3 +53,29 @@
 .action-reject { color: #dc3545; }
 .action-send { color: #007bff; }
 .action-analyze { color: #17a2b8; }
+
+/* Industry indicator - sidebar */
+.industry-indicator-sidebar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--sidebar-border-color, rgba(255,255,255,0.1));
+    color: var(--sidebar-text-color, rgba(255,255,255,0.8));
+    font-size: 0.875rem;
+}
+
+.industry-indicator-sidebar i {
+    opacity: 0.7;
+}
+
+/* Industry-specific accent colors */
+[data-industry="eshop"] .industry-indicator-sidebar { border-left: 3px solid #ff6b35; }
+[data-industry="real_estate"] .industry-indicator-sidebar { border-left: 3px solid #4a90a4; }
+[data-industry="webdesign"] .industry-indicator-sidebar { border-left: 3px solid #7c3aed; }
+[data-industry="automobile"] .industry-indicator-sidebar { border-left: 3px solid #059669; }
+[data-industry="restaurant"] .industry-indicator-sidebar { border-left: 3px solid #dc2626; }
+[data-industry="medical"] .industry-indicator-sidebar { border-left: 3px solid #0891b2; }
+[data-industry="legal"] .industry-indicator-sidebar { border-left: 3px solid #4f46e5; }
+[data-industry="finance"] .industry-indicator-sidebar { border-left: 3px solid #ca8a04; }
+[data-industry="education"] .industry-indicator-sidebar { border-left: 3px solid #16a34a; }

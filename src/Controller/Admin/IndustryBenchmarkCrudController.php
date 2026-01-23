@@ -13,9 +13,11 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\DateField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\NumberField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\ChoiceFilter;
 
 class IndustryBenchmarkCrudController extends AbstractTenantCrudController
@@ -30,7 +32,7 @@ class IndustryBenchmarkCrudController extends AbstractTenantCrudController
         return $crud
             ->setEntityLabelInSingular('Industry benchmark')
             ->setEntityLabelInPlural('Industry benchmarky')
-            ->setDefaultSort(['industry' => 'ASC'])
+            ->setDefaultSort(['periodStart' => 'DESC'])
             ->showEntityActionsInlined();
     }
 
@@ -64,31 +66,39 @@ class IndustryBenchmarkCrudController extends AbstractTenantCrudController
             ))
             ->setRequired(true);
 
-        yield IntegerField::new('minScore')
-            ->setLabel('Min skóre')
-            ->setHelp('Minimální přijatelné skóre pro odvětví');
+        yield DateField::new('periodStart')
+            ->setLabel('Období')
+            ->setHelp('Začátek období pro benchmark');
 
-        yield IntegerField::new('avgScore')
+        yield NumberField::new('avgScore')
             ->setLabel('Průměrné skóre')
-            ->setHelp('Průměrné skóre v odvětví');
+            ->setNumDecimals(1);
 
-        yield IntegerField::new('goodScore')
-            ->setLabel('Dobré skóre')
-            ->setHelp('Skóre pro dobré weby v odvětví');
+        yield NumberField::new('medianScore')
+            ->setLabel('Medián skóre')
+            ->setNumDecimals(1);
+
+        yield IntegerField::new('sampleSize')
+            ->setLabel('Počet vzorků')
+            ->setHelp('Počet analýz zahrnutých v benchmarku');
+
+        yield NumberField::new('avgIssueCount')
+            ->setLabel('Prům. problémů')
+            ->setNumDecimals(1)
+            ->hideOnIndex();
+
+        yield NumberField::new('avgCriticalIssueCount')
+            ->setLabel('Prům. kritických')
+            ->setNumDecimals(1)
+            ->hideOnIndex();
 
         yield DateTimeField::new('createdAt')
             ->setLabel('Vytvořeno')
             ->hideOnForm()
             ->hideOnIndex();
 
-        yield DateTimeField::new('updatedAt')
-            ->setLabel('Aktualizováno')
-            ->hideOnForm()
-            ->hideOnIndex();
-
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
-            ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm();
     }
 }

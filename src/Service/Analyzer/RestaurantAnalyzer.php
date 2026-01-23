@@ -32,6 +32,11 @@ class RestaurantAnalyzer extends AbstractLeadAnalyzer
         return [Industry::RESTAURANT];
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje jídelní lístek, online rezervace, PDF menu.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

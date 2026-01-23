@@ -494,4 +494,11 @@ class Proposal
 
         return $this;
     }
+
+    public function __toString(): string
+    {
+        $label = $this->lead?->getDomain() ?? 'Proposal';
+
+        return sprintf('%s - %s', $label, $this->type->value);
+    }
 }

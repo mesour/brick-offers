@@ -32,6 +32,11 @@ class AutomobileAnalyzer extends AbstractLeadAnalyzer
         return [Industry::AUTOMOBILE];
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje nabídku vozidel, financování, rezervaci zkušební jízdy.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

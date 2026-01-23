@@ -81,3 +81,21 @@ Všechny discovery sources implementují `DiscoverySourceInterface` a jsou regis
 - `normalizeUrl()` - přidá https://
 - `extractUrlsFromHtml()` - regex extrakce odkazů
 - `isValidWebsiteUrl()` - filtruje sociální sítě a vyhledávače
+- `extractPageData()` - extrakce emailů, telefonů, technologií z webu
+
+### Contact Page Crawling
+
+Při extrakci dat z webu se automaticky prohledávají **kontaktní stránky**:
+
+1. Stáhne se hlavní stránka
+2. Pokud na ní není email, hledají se odkazy na kontaktní stránky:
+   - CZ: `/kontakt`, `/kontakty`, `/o-nas`, `/napiste-nam`
+   - EN: `/contact`, `/about`, `/contact-us`, `/about-us`
+   - DE: `/kontakt`, `/impressum`
+3. Navštíví se až 3 kontaktní stránky a extrahují se emaily/telefony
+4. Výsledky se sloučí
+
+Toto chování lze vypnout:
+```php
+$source->setContactPageCrawlingEnabled(false);
+```

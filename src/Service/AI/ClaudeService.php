@@ -80,51 +80,82 @@ class ClaudeService
             'prompt_length' => strlen($prompt),
         ]);
 
-        // Write prompt to temp file to handle large prompts
+        // Get system prompt from options or use a simple default
+        $systemPrompt = $options['system_prompt'] ?? 'You are a helpful AI assistant. Follow the user instructions precisely.';
+
+        // Write prompt to temp file to handle large prompts and special characters
         $tempFile = tempnam(sys_get_temp_dir(), 'claude_prompt_');
         file_put_contents($tempFile, $prompt);
 
         try {
-            $command = [
-                'claude',
-                '--print',
-                '--output-format', 'json',
-            ];
-
-            // Add model if specified
+            // Use bash to read file content and pipe to claude
+            $escapedSystemPrompt = escapeshellarg($systemPrompt);
             $model = $options['model'] ?? $this->model;
-            if ($model) {
-                $command[] = '--model';
-                $command[] = $model;
-            }
+            $modelAlias = match (true) {
+                str_contains($model, 'opus') => 'opus',
+                str_contains($model, 'sonnet') => 'sonnet',
+                str_contains($model, 'haiku') => 'haiku',
+                default => $model,
+            };
+            $escapedModel = escapeshellarg($modelAlias);
+            $escapedTempFile = escapeshellarg($tempFile);
 
-            // Add max tokens
-            $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
-            $command[] = '--max-tokens';
-            $command[] = (string) $maxTokens;
+            $bashCommand = "cat {$escapedTempFile} | claude --print --output-format json --model {$escapedModel} --system-prompt {$escapedSystemPrompt}";
 
-            // Add the prompt file
-            $command[] = '--';
-            $command[] = '@' . $tempFile;
-
-            $process = new Process($command);
+            $process = new Process(['bash', '-c', $bashCommand]);
             $process->setTimeout(300); // 5 minute timeout
             $process->run();
 
+            $this->logger->debug('Claude CLI process completed', [
+                'exit_code' => $process->getExitCode(),
+                'output_length' => strlen($process->getOutput()),
+            ]);
+
             if (!$process->isSuccessful()) {
+                $this->logger->error('Claude CLI process failed', [
+                    'exit_code' => $process->getExitCode(),
+                    'error_output' => $process->getErrorOutput(),
+                    'output' => substr($process->getOutput(), 0, 500),
+                ]);
                 throw new \RuntimeException('Claude CLI failed: ' . $process->getErrorOutput());
             }
 
+            $this->logger->debug('Claude CLI output', [
+                'output_length' => strlen($process->getOutput()),
+            ]);
+
             $output = $process->getOutput();
 
-            // Try to parse JSON output
+            // Try to parse JSON output (Claude Code format)
             $json = json_decode($output, true);
             if ($json !== null && isset($json['result'])) {
+                // Extract token usage from modelUsage if available
+                $inputTokens = null;
+                $outputTokens = null;
+                $actualModel = $modelAlias;
+
+                if (isset($json['usage'])) {
+                    $inputTokens = ($json['usage']['input_tokens'] ?? 0)
+                        + ($json['usage']['cache_read_input_tokens'] ?? 0)
+                        + ($json['usage']['cache_creation_input_tokens'] ?? 0);
+                    $outputTokens = $json['usage']['output_tokens'] ?? null;
+                }
+
+                if (isset($json['modelUsage'])) {
+                    $firstModel = array_key_first($json['modelUsage']);
+                    if ($firstModel) {
+                        $actualModel = $firstModel;
+                        $usage = $json['modelUsage'][$firstModel];
+                        $inputTokens = $inputTokens ?? (($usage['inputTokens'] ?? 0) + ($usage['cacheReadInputTokens'] ?? 0));
+                        $outputTokens = $outputTokens ?? ($usage['outputTokens'] ?? null);
+                    }
+                }
+
                 return [
                     'content' => $json['result'],
-                    'model' => $json['model'] ?? $model,
-                    'input_tokens' => $json['input_tokens'] ?? null,
-                    'output_tokens' => $json['output_tokens'] ?? null,
+                    'model' => $actualModel,
+                    'input_tokens' => $inputTokens,
+                    'output_tokens' => $outputTokens,
                 ];
             }
 

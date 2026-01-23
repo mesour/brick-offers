@@ -65,7 +65,19 @@
       "Bash(./vendor/bin/phpunit:*)",
       "Bash(APP_SECRET=dev_secret_change_in_production_abc123xyz php bin/console doctrine:migrations:diff:*)",
       "Bash(APP_SECRET=dev_secret php bin/console:*)",
-      "WebFetch(domain:host.docker.internal)"
+      "WebFetch(domain:host.docker.internal)",
+      "Bash(./vendor/bin/phpcbf:*)",
+      "Bash(bin/console doctrine:schema:update:*)",
+      "Bash(bin/console app:leads:sync-scores:*)",
+      "Bash(bin/console doctrine:query:sql:*)",
+      "Bash(vendor/bin/phpunit:*)",
+      "Bash(./vendor/bin/php-cs-fixer fix:*)",
+      "Bash(ln:*)",
+      "Bash(claude --version:*)",
+      "Bash(claude --print --output-format json)",
+      "Bash(claude --print:*)",
+      "WebFetch(domain:www.ekatalog.cz)",
+      "WebFetch(domain:www.atlasskolstvi.cz)"
     ],
     "deny": [],
     "ask": []

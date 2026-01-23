@@ -60,6 +60,11 @@ class WebdesignCompetitorAnalyzer extends AbstractLeadAnalyzer
         return [Industry::WEBDESIGN];
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje portfolio, case studies, ceník, služby, reference a CTA.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

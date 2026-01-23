@@ -136,10 +136,16 @@ class OfferCrudController extends AbstractTenantCrudController
             ])
             ->setFormTypeOption('disabled', true);
 
-        yield TextareaField::new('body')
-            ->setLabel('Obsah emailu')
-            ->hideOnIndex()
-            ->setNumOfRows(15);
+        if ($pageName === Crud::PAGE_DETAIL) {
+            yield TextareaField::new('body')
+                ->setLabel('Obsah emailu')
+                ->setTemplatePath('admin/field/html_preview.html.twig');
+        } else {
+            yield TextareaField::new('body')
+                ->setLabel('Obsah emailu')
+                ->hideOnIndex()
+                ->setNumOfRows(15);
+        }
 
         yield TextareaField::new('plainTextBody')
             ->setLabel('Textová verze')
@@ -203,8 +209,7 @@ class OfferCrudController extends AbstractTenantCrudController
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
-            ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm();
     }
 
     public function approveOffer(AdminContext $context): RedirectResponse

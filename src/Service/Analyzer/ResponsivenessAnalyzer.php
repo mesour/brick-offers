@@ -25,6 +25,11 @@ class ResponsivenessAnalyzer extends AbstractBrowserAnalyzer
         return 60; // After performance
     }
 
+    public function getDescription(): string
+    {
+        return 'Testuje responsivitu na různých viewportech (mobil, tablet, desktop).';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

@@ -112,6 +112,11 @@ class LibraryAnalyzer extends AbstractLeadAnalyzer
         return 40;
     }
 
+    public function getDescription(): string
+    {
+        return 'Detekuje použité JavaScript/CSS knihovny a frameworky, kontroluje zastaralé verze.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

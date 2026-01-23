@@ -254,4 +254,9 @@ class EmailTemplate
 
         return str_replace($placeholders, array_values($vars), $template);
     }
+
+    public function __toString(): string
+    {
+        return $this->name;
+    }
 }

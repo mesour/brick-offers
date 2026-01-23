@@ -374,14 +374,22 @@ class LeadAnalyzeCommand extends Command
             }
         }
 
-        // Find NEW leads
         $qb = $this->leadRepository->createQueryBuilder('l')
-            ->where('l.status = :status')
-            ->setParameter('status', LeadStatus::NEW)
             ->orderBy('l.priority', 'DESC')
             ->addOrderBy('l.createdAt', 'ASC')
             ->setFirstResult($offset)
             ->setMaxResults($limit);
+
+        if ($reanalyze) {
+            // With --reanalyze, include all leads that have a website (but not dismissed)
+            $qb->where('l.hasWebsite = true')
+                ->andWhere('l.status != :dismissedStatus')
+                ->setParameter('dismissedStatus', LeadStatus::DISMISSED);
+        } else {
+            // Without --reanalyze, only NEW leads
+            $qb->where('l.status = :status')
+                ->setParameter('status', LeadStatus::NEW);
+        }
 
         return $qb->getQuery()->getResult();
     }

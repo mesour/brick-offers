@@ -47,4 +47,22 @@ interface LeadAnalyzerInterface
      * Check if this analyzer should run for a specific industry.
      */
     public function supportsIndustry(?Industry $industry): bool;
+
+    /**
+     * Get human-readable name of this analyzer.
+     */
+    public function getName(): string;
+
+    /**
+     * Get description of what this analyzer checks.
+     */
+    public function getDescription(): string;
+
+    /**
+     * Get configurable settings schema.
+     * Returns an array of setting definitions that can be configured per profile.
+     *
+     * @return array<string, array{type: string, label: string, default: mixed, min?: int|float, max?: int|float, step?: int|float}>
+     */
+    public function getConfigurableSettings(): array;
 }

@@ -49,7 +49,7 @@ class Analysis
     #[ORM\CustomIdGenerator(class: 'doctrine.uuid_generator')]
     private ?Uuid $id = null;
 
-    #[ORM\ManyToOne(targetEntity: Lead::class)]
+    #[ORM\ManyToOne(targetEntity: Lead::class, inversedBy: 'analyses')]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?Lead $lead = null;
 
@@ -514,5 +514,12 @@ class Analysis
         // This would need IssueRegistry to check severity
         // For now, return true if there are any new issues
         return count($this->issueDelta['added']) > 0;
+    }
+
+    public function __toString(): string
+    {
+        $label = $this->lead?->getDomain() ?? 'Analysis';
+
+        return sprintf('%s #%d', $label, $this->sequenceNumber);
     }
 }

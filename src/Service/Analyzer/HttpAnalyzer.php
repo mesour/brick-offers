@@ -22,6 +22,11 @@ class HttpAnalyzer extends AbstractLeadAnalyzer
         return 10;
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje SSL certifikát, dostupnost webu, TTFB, mixed content a správné 404 chování.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

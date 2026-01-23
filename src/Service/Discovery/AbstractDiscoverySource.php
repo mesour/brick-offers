@@ -14,11 +14,13 @@ abstract class AbstractDiscoverySource implements DiscoverySourceInterface
     protected int $requestDelayMs = 500;
     protected ?PageDataExtractor $pageDataExtractor = null;
     protected bool $extractionEnabled = false;
+    protected bool $contactPageCrawlingEnabled = true;
 
     public function __construct(
         protected readonly HttpClientInterface $httpClient,
         protected readonly LoggerInterface $logger,
-    ) {}
+    ) {
+    }
 
     /**
      * Set the page data extractor for contact/technology extraction.
@@ -37,7 +39,21 @@ abstract class AbstractDiscoverySource implements DiscoverySourceInterface
     }
 
     /**
+     * Enable or disable contact page crawling during extraction.
+     *
+     * When enabled, the extractor will look for contact/about pages
+     * and extract emails from them if not found on the main page.
+     */
+    public function setContactPageCrawlingEnabled(bool $enabled): void
+    {
+        $this->contactPageCrawlingEnabled = $enabled;
+    }
+
+    /**
      * Extract page data from a URL if extractor is configured and enabled.
+     *
+     * When contact page crawling is enabled, the extractor will look for
+     * contact/about pages and extract emails from them if not found on the main page.
      */
     protected function extractPageData(string $url): ?PageData
     {
@@ -45,6 +61,12 @@ abstract class AbstractDiscoverySource implements DiscoverySourceInterface
             return null;
         }
 
+        if ($this->contactPageCrawlingEnabled) {
+            // Use contact page crawling to find emails on contact pages
+            return $this->pageDataExtractor->extractWithContactPages($url);
+        }
+
+        // Simple extraction from main page only
         return $this->pageDataExtractor->extractFromUrl($url);
     }
 
@@ -145,7 +167,7 @@ abstract class AbstractDiscoverySource implements DiscoverySourceInterface
             'facebook.com', 'twitter.com', 'instagram.com', 'linkedin.com',
             'youtube.com', 'tiktok.com',
             'wikipedia.org',
-            'seznam.cz', 'firmy.cz', 'zivefirmy.cz', 'najisto.centrum.cz', 'zlatestranky.cz',
+            'seznam.cz', 'firmy.cz', 'ekatalog.cz', 'atlasskolstvi.cz', 'zivefirmy.cz', 'najisto.centrum.cz', 'zlatestranky.cz',
             'bing.com', 'yahoo.com',
             'github.com', 'stackoverflow.com',
         ];

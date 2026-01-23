@@ -98,7 +98,8 @@ class GoogleDiscoverySource extends AbstractDiscoverySource
                     continue;
                 }
 
-                $results[] = new DiscoveryResult($url, [
+                // Use createResultWithExtraction to optionally extract emails/phones
+                $results[] = $this->createResultWithExtraction($url, [
                     'title' => $item['title'] ?? null,
                     'snippet' => $item['snippet'] ?? null,
                     'query' => $query,

@@ -18,6 +18,9 @@ use App\Enum\LeadStatus;
 use App\Enum\LeadType;
 use App\Enum\SnapshotPeriod;
 use App\Repository\LeadRepository;
+use Doctrine\Common\Collections\Criteria;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -118,8 +121,21 @@ class Lead
     #[ORM\JoinColumn(name: 'latest_analysis_id', nullable: true, onDelete: 'SET NULL')]
     private ?Analysis $latestAnalysis = null;
 
+    /** @var Collection<int, Analysis> */
+    #[ORM\OneToMany(targetEntity: Analysis::class, mappedBy: 'lead', fetch: 'EXTRA_LAZY')]
+    #[ORM\OrderBy(['createdAt' => 'DESC'])]
+    private Collection $analyses;
+
+    /** @var Collection<int, AnalysisSnapshot> */
+    #[ORM\OneToMany(targetEntity: AnalysisSnapshot::class, mappedBy: 'lead', fetch: 'EXTRA_LAZY')]
+    #[ORM\OrderBy(['periodStart' => 'DESC'])]
+    private Collection $snapshots;
+
     #[ORM\Column(type: Types::INTEGER, options: ['default' => 0])]
     private int $analysisCount = 0;
+
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $score = null;
 
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $lastAnalyzedAt = null;
@@ -138,6 +154,11 @@ class Lead
     #[ORM\ManyToOne(targetEntity: Company::class, inversedBy: 'leads')]
     #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
     private ?Company $company = null;
+
+    // Discovery profile used for this lead
+    #[ORM\ManyToOne(targetEntity: DiscoveryProfile::class, inversedBy: 'leads')]
+    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
+    private ?DiscoveryProfile $discoveryProfile = null;
 
     // Company identification (denormalized for quick access)
     #[ORM\Column(length: 8, nullable: true)]
@@ -167,6 +188,12 @@ class Lead
     /** @var array<string, string>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
     private ?array $socialMedia = null;
+
+    public function __construct()
+    {
+        $this->analyses = new ArrayCollection();
+        $this->snapshots = new ArrayCollection();
+    }
 
     public function getId(): ?Uuid
     {
@@ -399,6 +426,47 @@ class Lead
     public function setLatestAnalysis(?Analysis $latestAnalysis): static
     {
         $this->latestAnalysis = $latestAnalysis;
+        $this->score = $latestAnalysis?->getTotalScore();
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Analysis>
+     */
+    public function getAnalyses(): Collection
+    {
+        return $this->analyses;
+    }
+
+    /**
+     * @return Collection<int, AnalysisSnapshot>
+     */
+    public function getSnapshots(): Collection
+    {
+        return $this->snapshots;
+    }
+
+    /**
+     * Get the latest snapshot for this lead.
+     */
+    public function getLatestSnapshot(): ?AnalysisSnapshot
+    {
+        if ($this->snapshots->isEmpty()) {
+            return null;
+        }
+
+        return $this->snapshots->first() ?: null;
+    }
+
+    public function getScore(): ?int
+    {
+        return $this->score;
+    }
+
+    public function setScore(?int $score): static
+    {
+        $this->score = $score;
 
         return $this;
     }
@@ -494,6 +562,18 @@ class Lead
     public function setCompany(?Company $company): static
     {
         $this->company = $company;
+
+        return $this;
+    }
+
+    public function getDiscoveryProfile(): ?DiscoveryProfile
+    {
+        return $this->discoveryProfile;
+    }
+
+    public function setDiscoveryProfile(?DiscoveryProfile $discoveryProfile): static
+    {
+        $this->discoveryProfile = $discoveryProfile;
 
         return $this;
     }
@@ -596,5 +676,10 @@ class Lead
         $this->socialMedia = $socialMedia;
 
         return $this;
+    }
+
+    public function __toString(): string
+    {
+        return $this->domain ?? $this->url ?? (string) $this->id;
     }
 }

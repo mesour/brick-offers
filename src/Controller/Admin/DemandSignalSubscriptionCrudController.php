@@ -6,15 +6,15 @@ namespace App\Controller\Admin;
 
 use App\Entity\DemandSignalSubscription;
 use App\Entity\User;
+use App\Enum\SubscriptionStatus;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
-use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
-use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
-use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 
 class DemandSignalSubscriptionCrudController extends AbstractTenantCrudController
 {
@@ -26,9 +26,9 @@ class DemandSignalSubscriptionCrudController extends AbstractTenantCrudControlle
     public function configureCrud(Crud $crud): Crud
     {
         return $crud
-            ->setEntityLabelInSingular('Odběr signálů')
+            ->setEntityLabelInSingular('Odběr signálu')
             ->setEntityLabelInPlural('Odběry signálů')
-            ->setSearchFields(['keywords'])
+            ->setSearchFields(['demandSignal.title', 'demandSignal.companyName', 'notes'])
             ->setDefaultSort(['createdAt' => 'DESC'])
             ->showEntityActionsInlined();
     }
@@ -37,7 +37,7 @@ class DemandSignalSubscriptionCrudController extends AbstractTenantCrudControlle
     {
         return $actions
             ->add(Crud::PAGE_INDEX, Action::DETAIL)
-            ->setPermission(Action::NEW, User::PERMISSION_COMPETITORS_MANAGE)
+            ->disable(Action::NEW) // Subscriptions are created automatically based on MarketWatchFilters
             ->setPermission(Action::EDIT, User::PERMISSION_COMPETITORS_MANAGE)
             ->setPermission(Action::DELETE, User::PERMISSION_COMPETITORS_MANAGE);
     }
@@ -46,36 +46,48 @@ class DemandSignalSubscriptionCrudController extends AbstractTenantCrudControlle
     {
         yield IdField::new('id')->hideOnForm()->setMaxLength(8);
 
-        yield TextField::new('keywords')
-            ->setLabel('Klíčová slova')
-            ->setHelp('Oddělená čárkou');
-
-        yield TextField::new('signalTypes')
-            ->setLabel('Typy signálů')
-            ->hideOnIndex();
-
-        yield IntegerField::new('minRelevanceScore')
-            ->setLabel('Min. relevance')
-            ->hideOnIndex();
-
-        yield TextField::new('notificationEmail')
-            ->setLabel('Email pro notifikace')
-            ->hideOnIndex();
-
-        yield BooleanField::new('instantNotification')
-            ->setLabel('Okamžité notifikace');
-
-        yield BooleanField::new('active')
-            ->setLabel('Aktivní');
-
-        yield DateTimeField::new('createdAt')
-            ->setLabel('Vytvořeno')
-            ->hideOnForm()
-            ->hideOnIndex();
+        yield AssociationField::new('demandSignal')
+            ->setLabel('Signál')
+            ->setRequired(true);
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
+            ->hideOnForm();
+
+        yield ChoiceField::new('status')
+            ->setLabel('Stav')
+            ->setChoices(array_combine(
+                array_map(fn (SubscriptionStatus $s) => $s->getLabel(), SubscriptionStatus::cases()),
+                SubscriptionStatus::cases()
+            ))
+            ->renderAsBadges([
+                SubscriptionStatus::NEW->value => 'primary',
+                SubscriptionStatus::REVIEWED->value => 'info',
+                SubscriptionStatus::DISMISSED->value => 'secondary',
+                SubscriptionStatus::CONVERTED->value => 'success',
+            ]);
+
+        yield TextareaField::new('notes')
+            ->setLabel('Poznámky')
+            ->hideOnIndex();
+
+        yield AssociationField::new('convertedLead')
+            ->setLabel('Konvertovaný lead')
             ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm();
+
+        yield DateTimeField::new('convertedAt')
+            ->setLabel('Konvertováno')
+            ->hideOnForm()
+            ->hideOnIndex();
+
+        yield DateTimeField::new('createdAt')
+            ->setLabel('Vytvořeno')
+            ->hideOnForm();
+
+        yield DateTimeField::new('updatedAt')
+            ->setLabel('Aktualizováno')
+            ->hideOnForm()
+            ->hideOnIndex();
     }
 }

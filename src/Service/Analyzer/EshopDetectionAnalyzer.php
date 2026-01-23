@@ -90,6 +90,11 @@ class EshopDetectionAnalyzer extends AbstractLeadAnalyzer
         return 5;
     }
 
+    public function getDescription(): string
+    {
+        return 'Detekuje e-shopové platformy a základní e-commerce funkcionalitu.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

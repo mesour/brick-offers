@@ -6,19 +6,25 @@ namespace App\Service\Extractor;
 
 class CompanyNameExtractor implements ContactExtractorInterface
 {
-    // Legal form suffixes to detect company names
+    // Legal form suffixes to detect company names (stricter patterns requiring periods or specific format)
     private const LEGAL_FORMS = [
-        's\.?\s*r\.?\s*o\.?',
-        'spol\.\s*s\s*r\.?\s*o\.?',
-        'a\.?\s*s\.?',
-        'v\.?\s*o\.?\s*s\.?',
-        'k\.?\s*s\.?',
-        'z\.?\s*s\.?',
-        's\.?\s*p\.?',
-        'o\.?\s*p\.?\s*s\.?',
-        'SE',
-        'z\.?\s*ú\.?',
-        'n\.?\s*o\.?',
+        's\.\s*r\.\s*o\.?',           // s.r.o.
+        'spol\.\s*s\s*r\.\s*o\.?',    // spol. s r.o.
+        'a\.\s*s\.?',                  // a.s.
+        'v\.\s*o\.\s*s\.?',            // v.o.s.
+        'k\.\s*s\.?',                  // k.s.
+        'z\.\s*s\.?',                  // z.s.
+        's\.\s*p\.?',                  // s.p.
+        'o\.\s*p\.\s*s\.?',            // o.p.s.
+        'z\.\s*ú\.?',                  // z.ú.
+        'n\.\s*o\.?',                  // n.o. (requires period)
+    ];
+
+    // Standalone legal forms (exact match, case sensitive for SE)
+    private const STANDALONE_LEGAL_FORMS = [
+        'SE',      // Societas Europaea
+        'SRO',     // uppercase without periods
+        'AS',      // uppercase without periods
     ];
 
     /**
@@ -30,6 +36,13 @@ class CompanyNameExtractor implements ContactExtractorInterface
     {
         // Decode HTML entities
         $html = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Remove script and style tags completely
+        $html = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $html) ?? $html;
+        $html = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $html) ?? $html;
+
+        // For legal form extraction, work with text content only (strip HTML tags)
+        $textContent = strip_tags($html);
 
         $candidates = [];
 
@@ -47,9 +60,10 @@ class CompanyNameExtractor implements ContactExtractorInterface
             }
         }
 
-        // 3. Company name with legal form in footer or content
+        // 3. Company name with legal form in footer or content (use text content to avoid HTML tag matches)
+        // Pattern with periods (s.r.o., a.s., etc.)
         $legalFormPattern = '(' . implode('|', self::LEGAL_FORMS) . ')';
-        if (preg_match_all('/([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][A-Za-záčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9\s\-&.,]+)\s*,?\s*' . $legalFormPattern . '/iu', $html, $matches, PREG_SET_ORDER)) {
+        if (preg_match_all('/([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][A-Za-záčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9\s\-&]+)\s*,?\s*' . $legalFormPattern . '(?:\s|$|[,.])/iu', $textContent, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $name = trim($match[1]) . ', ' . trim($match[2]);
                 $name = $this->cleanCompanyName($name);
@@ -59,8 +73,20 @@ class CompanyNameExtractor implements ContactExtractorInterface
             }
         }
 
-        // 4. Copyright notice (© 2024 Company Name)
-        if (preg_match_all('/[©&copy;]\s*(?:\d{4}\s*[-–]\s*)?\d{4}\s+([^<\n\r|]+?)(?:\s*[|,.\-<]|$)/iu', $html, $matches)) {
+        // Pattern with standalone uppercase forms (SE, SRO, AS) - requires word boundary
+        $standalonePattern = '(' . implode('|', self::STANDALONE_LEGAL_FORMS) . ')';
+        if (preg_match_all('/([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][A-Za-záčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9\s\-&]+)\s*,?\s*' . $standalonePattern . '(?:\s|$|[,.])/u', $textContent, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $name = trim($match[1]) . ', ' . trim($match[2]);
+                $name = $this->cleanCompanyName($name);
+                if ($this->isValidCompanyName($name)) {
+                    $candidates[] = ['name' => $name, 'priority' => 80];
+                }
+            }
+        }
+
+        // 4. Copyright notice (© 2024 Company Name) - use text content
+        if (preg_match_all('/[©]\s*(?:\d{4}\s*[-–]\s*)?\d{4}\s+([^\n\r|]+?)(?:\s*[|,.\-]|$)/iu', $textContent, $matches)) {
             foreach ($matches[1] as $name) {
                 $name = $this->cleanCompanyName($name);
                 if ($this->isValidCompanyName($name)) {
@@ -209,6 +235,12 @@ class CompanyNameExtractor implements ContactExtractorInterface
             '/^(menu|navigation|footer|header)$/iu',
             '/^\d+$/', // Just numbers
             '/^https?:\/\//i', // URLs
+            '/^meta\s/i', // HTML meta tag remnants
+            '/charset/i', // charset attribute
+            '/^(utf|iso|windows)/i', // encoding names
+            '/^(div|span|class|style|script|link|img)/i', // HTML elements
+            '/^all\s+rights\s+reserved/i',
+            '/^copyright/i',
         ];
 
         foreach ($rejectPatterns as $pattern) {
@@ -225,9 +257,15 @@ class CompanyNameExtractor implements ContactExtractorInterface
      */
     private function looksLikeCompanyName(string $name): bool
     {
-        // Contains legal form suffix
+        // Contains legal form suffix with periods
         $legalFormPattern = '/(' . implode('|', self::LEGAL_FORMS) . ')/iu';
         if (preg_match($legalFormPattern, $name)) {
+            return true;
+        }
+
+        // Contains standalone legal form at end
+        $standalonePattern = '/\b(' . implode('|', self::STANDALONE_LEGAL_FORMS) . ')$/u';
+        if (preg_match($standalonePattern, $name)) {
             return true;
         }
 

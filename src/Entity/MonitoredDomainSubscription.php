@@ -85,6 +85,12 @@ class MonitoredDomainSubscription
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private ?\DateTimeImmutable $createdAt = null;
 
+    /**
+     * Virtual property for form input (not persisted).
+     * Used in admin to allow entering domain name directly.
+     */
+    private ?string $domainInput = null;
+
     public function getId(): ?Uuid
     {
         return $this->id;
@@ -190,5 +196,22 @@ class MonitoredDomainSubscription
     public function setCreatedAtValue(): void
     {
         $this->createdAt = new \DateTimeImmutable();
+    }
+
+    public function getDomainInput(): ?string
+    {
+        // Use isset() to handle uninitialized property (new entities)
+        if (isset($this->monitoredDomain)) {
+            return $this->monitoredDomain->getDomain();
+        }
+
+        return $this->domainInput;
+    }
+
+    public function setDomainInput(?string $domainInput): static
+    {
+        $this->domainInput = $domainInput;
+
+        return $this;
     }
 }

@@ -1,0 +1,201 @@
+{# templates/admin/form/analyzer_config_theme.html.twig #}
+
+{% block analyzer_config_widget %}
+<div class="analyzer-config-grid">
+    <div class="row g-3">
+        {% for categoryCode, child in form %}
+            {% set schema = child.vars.schema ?? {} %}
+            {% set isEnabled = child.enabled.vars.value ?? true %}
+            <div class="col-md-6 col-lg-4">
+                <div class="analyzer-card {{ isEnabled ? 'enabled' : 'disabled' }}" data-category="{{ categoryCode }}">
+                    <div class="analyzer-header">
+                        <label class="analyzer-toggle">
+                            {{ form_widget(child.enabled, {'attr': {'class': 'form-check-input'}}) }}
+                            <span class="analyzer-name">{{ schema.name ?? categoryCode }}</span>
+                        </label>
+                        {% if schema.universal ?? false %}
+                            <span class="badge bg-secondary">U</span>
+                        {% else %}
+                            <span class="badge bg-primary">I</span>
+                        {% endif %}
+                    </div>
+
+                    {% if schema.description ?? '' %}
+                        <div class="analyzer-desc">{{ schema.description }}</div>
+                    {% endif %}
+
+                    <div class="analyzer-settings">
+                        <div class="priority-row">
+                            <span class="priority-label">Priorita:</span>
+                            <input type="range" min="1" max="10"
+                                   name="{{ child.priority.vars.full_name }}"
+                                   id="{{ child.priority.vars.id }}"
+                                   value="{{ child.priority.vars.value ?? 5 }}"
+                                   class="priority-slider"
+                                   oninput="this.nextElementSibling.textContent = this.value">
+                            <span class="priority-val">{{ child.priority.vars.value ?? 5 }}</span>
+                        </div>
+
+                        {% if child.ignoreCodes is defined and (schema.availableIssueCodes|default({}))|length > 0 %}
+                            {% set ignoreCount = child.ignoreCodes.vars.value|default([])|length %}
+                            <details class="advanced-settings">
+                                <summary>Ignorovat kódy{% if ignoreCount > 0 %} ({{ ignoreCount }}){% endif %}</summary>
+                                <div class="ignore-codes-wrap">
+                                    {{ form_widget(child.ignoreCodes, {'attr': {'class': 'form-select form-select-sm', 'size': '4'}}) }}
+                                </div>
+                            </details>
+                        {% endif %}
+
+                        {% if child.thresholds is defined and (schema.settings|default({}))|length > 0 %}
+                            <details class="advanced-settings">
+                                <summary>Prahy</summary>
+                                <div class="thresholds-wrap">
+                                    {% for thresholdKey, thresholdField in child.thresholds %}
+                                        <div class="threshold-row">
+                                            <label>{{ thresholdField.vars.label }}</label>
+                                            <input type="number"
+                                                   name="{{ thresholdField.vars.full_name }}"
+                                                   id="{{ thresholdField.vars.id }}"
+                                                   value="{{ thresholdField.vars.value ?? '' }}"
+                                                   class="form-control form-control-sm"
+                                                   {% if schema.settings[thresholdKey].min is defined %}min="{{ schema.settings[thresholdKey].min }}"{% endif %}
+                                                   {% if schema.settings[thresholdKey].max is defined %}max="{{ schema.settings[thresholdKey].max }}"{% endif %}
+                                                   {% if schema.settings[thresholdKey].step is defined %}step="{{ schema.settings[thresholdKey].step }}"{% endif %}>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.analyzer-config-grid {
+    margin: -0.5rem;
+}
+.analyzer-card {
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 8px;
+    padding: 12px;
+    height: 100%;
+    transition: all 0.2s;
+}
+.analyzer-card.disabled {
+    opacity: 0.6;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+}
+.analyzer-card:hover {
+    border-color: var(--bs-border-color-translucent, #adb5bd);
+}
+.analyzer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+.analyzer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    margin: 0;
+}
+.analyzer-toggle .form-check-input {
+    margin: 0;
+    cursor: pointer;
+}
+.analyzer-toggle .form-check-input:checked {
+    background-color: var(--bs-success, #198754);
+    border-color: var(--bs-success, #198754);
+}
+.analyzer-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--bs-body-color);
+}
+.analyzer-header .badge {
+    font-size: 0.65rem;
+    padding: 2px 5px;
+}
+.analyzer-desc {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color, #6c757d);
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+.analyzer-settings {
+    border-top: 1px solid var(--bs-border-color, #eee);
+    padding-top: 8px;
+    margin-top: 4px;
+}
+.priority-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+}
+.priority-label {
+    color: var(--bs-secondary-color, #6c757d);
+    white-space: nowrap;
+}
+.priority-slider {
+    flex: 1;
+    height: 4px;
+    cursor: pointer;
+}
+.priority-val {
+    font-weight: 600;
+    color: var(--bs-primary, #0d6efd);
+    min-width: 20px;
+    text-align: right;
+}
+.advanced-settings {
+    margin-top: 8px;
+    font-size: 0.8rem;
+}
+.advanced-settings summary {
+    cursor: pointer;
+    color: var(--bs-secondary-color, #6c757d);
+    user-select: none;
+}
+.advanced-settings summary:hover {
+    color: var(--bs-body-color, #495057);
+}
+.advanced-settings[open] summary {
+    margin-bottom: 6px;
+}
+.ignore-codes-wrap select {
+    font-size: 0.75rem;
+}
+.thresholds-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.threshold-row label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color, #6c757d);
+    margin-bottom: 2px;
+}
+.threshold-row input {
+    font-size: 0.8rem;
+    padding: 2px 6px;
+}
+</style>
+{% endblock %}
+
+{% block analyzer_item_widget %}
+{# Handled by parent #}
+{{ form_widget(form) }}
+{% endblock %}
+
+{% block thresholds_widget %}
+{# Handled inline in analyzer_config_widget #}
+{{ form_widget(form) }}
+{% endblock %}

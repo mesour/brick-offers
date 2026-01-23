@@ -69,6 +69,35 @@ abstract class AbstractLeadAnalyzer implements LeadAnalyzerInterface
     }
 
     /**
+     * Get human-readable name of this analyzer.
+     * Default: uses category label.
+     */
+    public function getName(): string
+    {
+        return $this->getCategory()->getLabel();
+    }
+
+    /**
+     * Get description of what this analyzer checks.
+     * Default: empty string, override in subclasses.
+     */
+    public function getDescription(): string
+    {
+        return '';
+    }
+
+    /**
+     * Get configurable settings schema.
+     * Default: no configurable settings.
+     *
+     * @return array<string, array{type: string, label: string, default: mixed, min?: int|float, max?: int|float, step?: int|float}>
+     */
+    public function getConfigurableSettings(): array
+    {
+        return [];
+    }
+
+    /**
      * Fetch URL content with standard error handling.
      *
      * @return array{response: ?ResponseInterface, content: ?string, error: ?string, statusCode: ?int, headers: array<string, string>}
@@ -92,7 +121,7 @@ abstract class AbstractLeadAnalyzer implements LeadAnalyzerInterface
 
             return [
                 'response' => $response,
-                'content' => $content,
+                'content' => $this->sanitizeForJson($content),
                 'error' => null,
                 'statusCode' => $statusCode,
                 'headers' => $headers,
@@ -127,6 +156,26 @@ abstract class AbstractLeadAnalyzer implements LeadAnalyzerInterface
         }
 
         return $normalized;
+    }
+
+    /**
+     * Sanitize string content for safe JSON/PostgreSQL storage.
+     * Removes null bytes and other problematic Unicode characters.
+     */
+    protected function sanitizeForJson(?string $content): ?string
+    {
+        if ($content === null) {
+            return null;
+        }
+
+        // Remove null bytes (\x00) which PostgreSQL cannot store in JSON
+        $content = str_replace("\x00", '', $content);
+
+        // Also remove other problematic control characters (except common whitespace)
+        // Keep: tab (\x09), newline (\x0A), carriage return (\x0D)
+        $content = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $content);
+
+        return $content;
     }
 
     /**

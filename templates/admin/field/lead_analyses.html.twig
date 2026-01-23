@@ -1,0 +1,163 @@
+{# templates/admin/field/lead_analyses.html.twig #}
+{% set analyses = field.value %}
+
+{% if analyses is empty or analyses.count == 0 %}
+    <p class="text-muted">Zatím žádné analýzy</p>
+{% else %}
+    <div class="accordion" id="leadAnalysesAccordion">
+        {% for analysis in analyses %}
+            {% set analysisId = 'analysis-' ~ loop.index %}
+            {% set isCompleted = analysis.status.value == 'completed' %}
+            {% set isFailed = analysis.status.value == 'failed' %}
+            {% set scoreClass = analysis.totalScore >= 80 ? 'success' : (analysis.totalScore >= 50 ? 'warning' : 'danger') %}
+
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button {{ loop.first ? '' : 'collapsed' }}" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#{{ analysisId }}">
+                        <div class="d-flex w-100 justify-content-between align-items-center me-3">
+                            <div>
+                                <strong>#{{ analysis.sequenceNumber }}</strong>
+                                <span class="text-muted ms-2">{{ analysis.createdAt|date('d.m.Y H:i') }}</span>
+                                {% set statusClass = {
+                                    'pending': 'secondary',
+                                    'running': 'warning',
+                                    'completed': 'success',
+                                    'failed': 'danger'
+                                } %}
+                                <span class="badge bg-{{ statusClass[analysis.status.value] ?? 'secondary' }} ms-2">
+                                    {{ analysis.status.value }}
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                {% if isCompleted %}
+                                    <span class="badge bg-{{ scoreClass }} me-2">{{ analysis.totalScore }} b.</span>
+                                    {% if analysis.issueCount > 0 %}
+                                        <span class="badge bg-warning text-dark me-2">{{ analysis.issueCount }} probl.</span>
+                                    {% endif %}
+                                    {% if analysis.criticalIssueCount > 0 %}
+                                        <span class="badge bg-danger">{{ analysis.criticalIssueCount }} krit.</span>
+                                    {% endif %}
+                                    {% if analysis.scoreDelta is not null %}
+                                        {% if analysis.scoreDelta > 0 %}
+                                            <span class="badge bg-success ms-2">+{{ analysis.scoreDelta }}</span>
+                                        {% elseif analysis.scoreDelta < 0 %}
+                                            <span class="badge bg-danger ms-2">{{ analysis.scoreDelta }}</span>
+                                        {% endif %}
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </button>
+                </h2>
+                <div id="{{ analysisId }}" class="accordion-collapse collapse {{ loop.first ? 'show' : '' }}"
+                     data-bs-parent="#leadAnalysesAccordion">
+                    <div class="accordion-body">
+                        {% if isFailed %}
+                            <div class="alert alert-danger mb-3">
+                                <i class="fa fa-exclamation-triangle"></i>
+                                <strong>Analýza selhala</strong>
+                            </div>
+                        {% elseif isCompleted %}
+                            {# Results accordion #}
+                            {% set results = analysis.results %}
+                            {% if results is not empty and results.count > 0 %}
+                                <div class="accordion" id="resultsAccordion{{ loop.index }}">
+                                    {% for result in results %}
+                                        {% set resultId = 'result-' ~ loop.parent.loop.index ~ '-' ~ loop.index %}
+                                        {% set resultCompleted = result.status.value == 'completed' %}
+                                        {% set resultFailed = result.status.value == 'failed' %}
+                                        {% set resultScoreClass = result.score >= 80 ? 'success' : (result.score >= 50 ? 'warning' : 'danger') %}
+
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header">
+                                                <button class="accordion-button collapsed py-2" type="button"
+                                                        data-bs-toggle="collapse" data-bs-target="#{{ resultId }}">
+                                                    <div class="d-flex w-100 justify-content-between align-items-center me-3">
+                                                        <span>{{ result.category.label }}</span>
+                                                        <div>
+                                                            {% if resultCompleted %}
+                                                                <span class="badge bg-{{ resultScoreClass }}">{{ result.score }}</span>
+                                                                {% if result.issueCount > 0 %}
+                                                                    <span class="badge bg-warning text-dark">{{ result.issueCount }}</span>
+                                                                {% endif %}
+                                                            {% elseif resultFailed %}
+                                                                <span class="badge bg-danger">chyba</span>
+                                                            {% else %}
+                                                                <span class="badge bg-secondary">{{ result.status.value }}</span>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            </h2>
+                                            <div id="{{ resultId }}" class="accordion-collapse collapse"
+                                                 data-bs-parent="#resultsAccordion{{ loop.parent.loop.index }}">
+                                                <div class="accordion-body py-2">
+                                                    {% if resultFailed and result.errorMessage %}
+                                                        <div class="alert alert-danger py-2 mb-0">
+                                                            {{ result.errorMessage }}
+                                                        </div>
+                                                    {% elseif resultCompleted %}
+                                                        {% set issues = result.issues %}
+                                                        {% if issues is not empty %}
+                                                            <table class="table table-sm table-striped mb-0">
+                                                                <thead class="table-light">
+                                                                    <tr>
+                                                                        <th style="width: 80px;">Závažnost</th>
+                                                                        <th>Problém</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {% for issue in issues %}
+                                                                        {% set severity = issue.severity ?? 'info' %}
+                                                                        {% set severityClass = {
+                                                                            'critical': 'danger',
+                                                                            'high': 'warning',
+                                                                            'medium': 'info',
+                                                                            'low': 'secondary',
+                                                                            'info': 'light'
+                                                                        } %}
+                                                                        <tr>
+                                                                            <td>
+                                                                                <span class="badge bg-{{ severityClass[severity] ?? 'secondary' }}">
+                                                                                    {{ severity }}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td>
+                                                                                <strong>{{ issue.title ?? issue.code }}</strong>
+                                                                                {% if issue.description is defined and issue.description %}
+                                                                                    <br><small class="text-muted">{{ issue.description }}</small>
+                                                                                {% endif %}
+                                                                            </td>
+                                                                        </tr>
+                                                                    {% endfor %}
+                                                                </tbody>
+                                                            </table>
+                                                        {% else %}
+                                                            <p class="text-success mb-0"><i class="fa fa-check"></i> OK</p>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <p class="text-muted mb-0">Čeká na zpracování...</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="text-muted mb-0">Žádné výsledky</p>
+                            {% endif %}
+                        {% else %}
+                            <p class="text-muted mb-0">Analýza probíhá...</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    {% if analyses.count > 10 %}
+        <p class="text-muted mt-2 small">
+            <i class="fa fa-info-circle"></i> Zobrazeno posledních 10 z {{ analyses.count }} analýz.
+        </p>
+    {% endif %}
+{% endif %}

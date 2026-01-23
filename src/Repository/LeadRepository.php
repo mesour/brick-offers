@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
+use App\Entity\Analysis;
+use App\Entity\AnalysisSnapshot;
 use App\Entity\Lead;
+use App\Entity\User;
 use App\Enum\LeadStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
+use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * @extends ServiceEntityRepository<Lead>
@@ -122,5 +127,59 @@ class LeadRepository extends ServiceEntityRepository
         }
 
         return $counts;
+    }
+
+    /**
+     * Find lead with all detail page data pre-fetched to avoid N+1 queries.
+     *
+     * Uses 3 optimized queries:
+     * - Query 1: Lead + single-value associations (latestAnalysis, company, user, discoveryProfile)
+     * - Query 2: Analyses with results (limit 10 newest)
+     * - Query 3: Snapshots (limit 20 newest)
+     */
+    public function findOneWithDetailData(Uuid $id, ?User $user = null): ?Lead
+    {
+        $qb = $this->createQueryBuilder('l')
+            ->leftJoin('l.latestAnalysis', 'la')->addSelect('la')
+            ->leftJoin('l.company', 'c')->addSelect('c')
+            ->leftJoin('l.user', 'u')->addSelect('u')
+            ->leftJoin('l.discoveryProfile', 'dp')->addSelect('dp')
+            ->where('l.id = :id')
+            ->setParameter('id', $id, UuidType::NAME);
+
+        if ($user !== null) {
+            $qb->andWhere('l.user = :user')->setParameter('user', $user);
+        }
+
+        $lead = $qb->getQuery()->getOneOrNullResult();
+
+        if ($lead === null) {
+            return null;
+        }
+
+        // Pre-fetch analyses with results (Doctrine will cache them in identity map)
+        $this->getEntityManager()->createQueryBuilder()
+            ->select('a', 'r')
+            ->from(Analysis::class, 'a')
+            ->leftJoin('a.results', 'r')
+            ->where('a.lead = :lead')
+            ->setParameter('lead', $lead)
+            ->orderBy('a.createdAt', 'DESC')
+            ->setMaxResults(10)
+            ->getQuery()
+            ->getResult();
+
+        // Pre-fetch snapshots
+        $this->getEntityManager()->createQueryBuilder()
+            ->select('s')
+            ->from(AnalysisSnapshot::class, 's')
+            ->where('s.lead = :lead')
+            ->setParameter('lead', $lead)
+            ->orderBy('s.periodStart', 'DESC')
+            ->setMaxResults(20)
+            ->getQuery()
+            ->getResult();
+
+        return $lead;
     }
 }

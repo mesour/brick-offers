@@ -23,12 +23,11 @@ use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * Represents a shared monitored domain for competitor tracking.
- * Multiple users can subscribe to the same domain.
+ * Represents a globally monitored domain for competitor tracking.
+ * Managed by server admin via CLI. Users subscribe to domains via MonitoredDomainSubscription.
  */
 #[ORM\Entity(repositoryClass: MonitoredDomainRepository::class)]
 #[ORM\Table(name: 'monitored_domains')]
-#[ORM\UniqueConstraint(name: 'monitored_domains_domain_unique', columns: ['domain'])]
 #[ORM\Index(name: 'monitored_domains_last_crawled_at_idx', columns: ['last_crawled_at'])]
 #[ORM\Index(name: 'monitored_domains_crawl_frequency_idx', columns: ['crawl_frequency'])]
 #[ORM\HasLifecycleCallbacks]
@@ -226,5 +225,10 @@ class MonitoredDomain
     public function getSubscriberCount(): int
     {
         return $this->subscriptions->count();
+    }
+
+    public function __toString(): string
+    {
+        return $this->domain;
     }
 }

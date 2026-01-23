@@ -38,6 +38,11 @@ class OutdatedWebAnalyzer extends AbstractLeadAnalyzer
     private const INLINE_STYLE_THRESHOLD = 10;
     private const TABLE_LAYOUT_THRESHOLD = 3;
 
+    // Website age thresholds in years
+    private const AGE_ANCIENT_THRESHOLD = 10;  // 10+ years = critical
+    private const AGE_OLD_THRESHOLD = 5;       // 5-10 years = recommended
+    private const AGE_STALE_THRESHOLD = 2;     // 2-5 years = optimization
+
     public function getCategory(): IssueCategory
     {
         return IssueCategory::OUTDATED_CODE;
@@ -46,6 +51,11 @@ class OutdatedWebAnalyzer extends AbstractLeadAnalyzer
     public function getPriority(): int
     {
         return 35;
+    }
+
+    public function getDescription(): string
+    {
+        return 'Detekuje zastaralé HTML/CSS/JS techniky, chybějící DOCTYPE, deprecated tagy.';
     }
 
     public function analyze(Lead $lead): AnalyzerResult
@@ -78,6 +88,8 @@ class OutdatedWebAnalyzer extends AbstractLeadAnalyzer
             'javaAppletDetected' => false,
             'fixedWidthElements' => 0,
             'outdatedScore' => 0,
+            'copyrightYears' => null,
+            'websiteAge' => null,
         ];
 
         // Check DOCTYPE
@@ -163,6 +175,27 @@ class OutdatedWebAnalyzer extends AbstractLeadAnalyzer
         if ($blockingScriptsResult['count'] > 0) {
             $issues[] = $this->createIssue('outdated_blocking_scripts', $blockingScriptsResult['evidence']);
             $rawData['outdatedScore'] += $blockingScriptsResult['count'];
+        }
+
+        // Check copyright year to estimate website age
+        $copyrightResult = $this->checkCopyrightYear($content);
+        $rawData['copyrightYears'] = $copyrightResult['years'];
+        $rawData['websiteAge'] = $copyrightResult['age'];
+        $rawData['copyrightText'] = $copyrightResult['copyrightText'];
+
+        if ($copyrightResult['issue'] !== null) {
+            $issues[] = $copyrightResult['issue'];
+            $rawData['outdatedScore'] += $copyrightResult['scoreImpact'];
+        }
+
+        // Check Last-Modified header if available
+        $lastModifiedResult = $this->checkLastModified($result['headers']);
+        $rawData['lastModified'] = $lastModifiedResult['date'];
+        $rawData['lastModifiedAge'] = $lastModifiedResult['ageYears'];
+
+        if ($lastModifiedResult['issue'] !== null) {
+            $issues[] = $lastModifiedResult['issue'];
+            $rawData['outdatedScore'] += $lastModifiedResult['scoreImpact'];
         }
 
         // Determine if web is outdated based on score
@@ -579,5 +612,178 @@ class OutdatedWebAnalyzer extends AbstractLeadAnalyzer
     private function createFixedWidthIssue(array $result): Issue
     {
         return $this->createIssue('outdated_fixed_width', 'Příklady: ' . implode(', ', $result['examples']));
+    }
+
+    /**
+     * Check copyright year in footer to estimate website age.
+     *
+     * Looks for patterns like:
+     * - © 2015
+     * - © 2015-2024
+     * - Copyright 2015
+     * - (c) 2015
+     *
+     * @return array{years: ?array{start: int, end: int}, age: ?int, copyrightText: ?string, issue: ?Issue, scoreImpact: int}
+     */
+    private function checkCopyrightYear(string $content): array
+    {
+        $result = [
+            'years' => null,
+            'age' => null,
+            'copyrightText' => null,
+            'issue' => null,
+            'scoreImpact' => 0,
+        ];
+
+        $currentYear = (int) date('Y');
+
+        // Try to find copyright in footer area first (more reliable)
+        $footerContent = '';
+        if (preg_match('/<footer[^>]*>.*?<\/footer>/is', $content, $footerMatch)) {
+            $footerContent = $footerMatch[0];
+        }
+
+        // Also check for common footer class/id patterns
+        if (empty($footerContent)) {
+            if (preg_match('/<[^>]+(?:class|id)=["\'][^"\']*(?:footer|copyright|bottom)[^"\']*["\'][^>]*>.*?<\/[^>]+>/is', $content, $footerMatch)) {
+                $footerContent = $footerMatch[0];
+            }
+        }
+
+        // Search in footer first, then in full content
+        $searchContent = !empty($footerContent) ? $footerContent : $content;
+
+        // Pattern to match copyright with year(s)
+        // Matches: © 2015, © 2015-2024, © 2015 - 2024, Copyright 2015, (c) 2015, etc.
+        $copyrightPattern = '/(?:©|&copy;|\(c\)|copyright)\s*(\d{4})(?:\s*[-–—]\s*(\d{4}))?/i';
+
+        if (preg_match($copyrightPattern, $searchContent, $matches)) {
+            $startYear = (int) $matches[1];
+            $endYear = isset($matches[2]) ? (int) $matches[2] : $startYear;
+
+            // Validate years are reasonable (1990 - current year)
+            if ($startYear >= 1990 && $startYear <= $currentYear && $endYear <= $currentYear) {
+                $result['years'] = [
+                    'start' => $startYear,
+                    'end' => $endYear,
+                ];
+                $result['copyrightText'] = trim($matches[0]);
+
+                // Calculate age based on start year (when website was created)
+                $age = $currentYear - $startYear;
+                $result['age'] = $age;
+
+                // Create issue based on age
+                if ($age >= self::AGE_ANCIENT_THRESHOLD) {
+                    // 10+ years old - critical
+                    $result['issue'] = $this->createIssue(
+                        'outdated_ancient_copyright',
+                        sprintf('Copyright začíná rokem %d (%d let starý web)', $startYear, $age)
+                    );
+                    $result['scoreImpact'] = 10;
+                } elseif ($age >= self::AGE_OLD_THRESHOLD) {
+                    // 5-10 years old - recommended
+                    $result['issue'] = $this->createIssue(
+                        'outdated_old_copyright',
+                        sprintf('Copyright začíná rokem %d (%d let starý web)', $startYear, $age)
+                    );
+                    $result['scoreImpact'] = 5;
+                } elseif ($age >= self::AGE_STALE_THRESHOLD && $endYear < $currentYear) {
+                    // 2-5 years old with outdated end year - optimization
+                    $result['issue'] = $this->createIssue(
+                        'outdated_stale_copyright',
+                        sprintf('Copyright %d-%d (neaktualizovaný rok)', $startYear, $endYear)
+                    );
+                    $result['scoreImpact'] = 2;
+                } elseif ($endYear < $currentYear - 1) {
+                    // End year is more than 1 year behind
+                    $result['issue'] = $this->createIssue(
+                        'outdated_stale_copyright',
+                        sprintf('Copyright končí rokem %d', $endYear)
+                    );
+                    $result['scoreImpact'] = 1;
+                }
+            }
+        }
+
+        // Alternative: look for "established" or "since" year
+        if ($result['years'] === null) {
+            $establishedPattern = '/(?:since|od roku|založeno|established)\s*(\d{4})/i';
+            if (preg_match($establishedPattern, $searchContent, $matches)) {
+                $startYear = (int) $matches[1];
+                if ($startYear >= 1990 && $startYear <= $currentYear) {
+                    $age = $currentYear - $startYear;
+                    $result['years'] = ['start' => $startYear, 'end' => $currentYear];
+                    $result['age'] = $age;
+                    $result['copyrightText'] = trim($matches[0]);
+
+                    // Only flag very old sites from "since" pattern
+                    if ($age >= self::AGE_ANCIENT_THRESHOLD) {
+                        $result['issue'] = $this->createIssue(
+                            'outdated_ancient_copyright',
+                            sprintf('Web existuje od roku %d (%d let)', $startYear, $age)
+                        );
+                        $result['scoreImpact'] = 8;
+                    } elseif ($age >= self::AGE_OLD_THRESHOLD) {
+                        $result['issue'] = $this->createIssue(
+                            'outdated_old_copyright',
+                            sprintf('Web existuje od roku %d (%d let)', $startYear, $age)
+                        );
+                        $result['scoreImpact'] = 4;
+                    }
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check Last-Modified HTTP header to estimate content freshness.
+     *
+     * @param array<string, string> $headers
+     * @return array{date: ?string, ageYears: ?float, issue: ?Issue, scoreImpact: int}
+     */
+    private function checkLastModified(array $headers): array
+    {
+        $result = [
+            'date' => null,
+            'ageYears' => null,
+            'issue' => null,
+            'scoreImpact' => 0,
+        ];
+
+        $lastModified = $headers['last-modified'] ?? null;
+        if ($lastModified === null) {
+            return $result;
+        }
+
+        try {
+            $lastModifiedDate = new \DateTimeImmutable($lastModified);
+            $now = new \DateTimeImmutable();
+
+            $result['date'] = $lastModifiedDate->format('Y-m-d');
+
+            $interval = $now->diff($lastModifiedDate);
+            $ageYears = $interval->y + ($interval->m / 12);
+            $result['ageYears'] = round($ageYears, 1);
+
+            // Flag if last modified is more than 3 years ago
+            if ($ageYears >= 3) {
+                $result['issue'] = $this->createIssue(
+                    'outdated_last_modified_old',
+                    sprintf('Stránka naposledy změněna: %s (%.1f let)', $result['date'], $ageYears)
+                );
+                $result['scoreImpact'] = min((int) ($ageYears / 2), 5);
+            }
+        } catch (\Exception $e) {
+            // Invalid date format, ignore
+            $this->logger->debug('Could not parse Last-Modified header', [
+                'value' => $lastModified,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $result;
     }
 }

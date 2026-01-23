@@ -24,6 +24,11 @@ class SeoAnalyzer extends AbstractLeadAnalyzer
         return 30;
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje title, meta description, OG tagy, viewport, H1, sitemap a robots.txt.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

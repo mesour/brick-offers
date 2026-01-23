@@ -6,19 +6,24 @@ namespace App\MessageHandler;
 
 use App\Entity\Analysis;
 use App\Entity\AnalysisResult;
+use App\Entity\DiscoveryProfile;
 use App\Enum\AnalysisStatus;
 use App\Enum\Industry;
 use App\Enum\IssueCategory;
 use App\Message\AnalyzeLeadMessage;
+use App\Message\TakeScreenshotMessage;
 use App\Repository\AnalysisRepository;
+use App\Repository\DiscoveryProfileRepository;
 use App\Repository\LeadRepository;
 use App\Service\Analyzer\Issue;
 use App\Service\Analyzer\LeadAnalyzerInterface;
 use App\Service\Scoring\ScoringServiceInterface;
+use App\Service\Snapshot\SnapshotService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Handler for analyzing leads asynchronously.
@@ -37,8 +42,11 @@ final class AnalyzeLeadMessageHandler
         iterable $analyzers,
         private readonly LeadRepository $leadRepository,
         private readonly AnalysisRepository $analysisRepository,
+        private readonly DiscoveryProfileRepository $profileRepository,
         private readonly EntityManagerInterface $em,
         private readonly ScoringServiceInterface $scoringService,
+        private readonly SnapshotService $snapshotService,
+        private readonly MessageBusInterface $messageBus,
         private readonly LoggerInterface $logger,
     ) {
         // Sort analyzers by priority
@@ -71,20 +79,32 @@ final class AnalyzeLeadMessageHandler
             }
         }
 
+        // Get discovery profile if specified
+        $profile = null;
+        if ($message->profileId !== null) {
+            $profile = $this->profileRepository->find($message->profileId);
+        }
+        // Try to get profile from lead if not specified in message
+        if ($profile === null) {
+            $profile = $lead->getDiscoveryProfile();
+        }
+
         // Parse industry filter
         $industry = null;
         if ($message->industryFilter !== null) {
             $industry = Industry::tryFrom($message->industryFilter);
         }
-        $industry = $industry ?? $lead->getIndustry();
+        // Fallback to profile industry, then lead industry
+        $industry = $industry ?? $profile?->getIndustry() ?? $lead->getIndustry();
 
-        // Filter analyzers by industry
-        $analyzersToRun = $this->filterAnalyzers($industry);
+        // Filter analyzers by industry and profile config
+        $analyzersToRun = $this->filterAnalyzers($industry, $profile);
 
         if (empty($analyzersToRun)) {
             $this->logger->warning('No analyzers available for lead', [
                 'lead_id' => $message->leadId,
                 'industry' => $industry?->value,
+                'profile_id' => $message->profileId?->toRfc4122(),
             ]);
 
             return;
@@ -94,10 +114,11 @@ final class AnalyzeLeadMessageHandler
             'lead_id' => $message->leadId,
             'domain' => $lead->getDomain(),
             'analyzers_count' => count($analyzersToRun),
+            'profile_id' => $profile?->getId()?->toRfc4122(),
         ]);
 
         try {
-            $this->analyzeLead($lead, $analyzersToRun, $industry);
+            $this->analyzeLead($lead, $analyzersToRun, $industry, $profile);
 
             $this->logger->info('Lead analysis completed', [
                 'lead_id' => $message->leadId,
@@ -114,30 +135,52 @@ final class AnalyzeLeadMessageHandler
     }
 
     /**
-     * Filter analyzers by industry.
+     * Filter analyzers by industry and profile configuration.
      *
      * @return array<LeadAnalyzerInterface>
      */
-    private function filterAnalyzers(?Industry $industry): array
+    private function filterAnalyzers(?Industry $industry, ?DiscoveryProfile $profile = null): array
     {
-        if ($industry === null) {
-            // Without industry, only run universal analyzers
-            return array_filter(
-                $this->analyzers,
-                fn (LeadAnalyzerInterface $a) => $a->getCategory()->isUniversal()
-            );
-        }
+        $filtered = [];
 
-        // With industry, run universal + industry-specific analyzers
-        return array_filter($this->analyzers, function (LeadAnalyzerInterface $analyzer) use ($industry): bool {
+        foreach ($this->analyzers as $analyzer) {
             $category = $analyzer->getCategory();
 
-            if ($category->isUniversal()) {
-                return true;
+            // Check if analyzer is enabled in profile config
+            if ($profile !== null && !$profile->isAnalyzerEnabled($category->value)) {
+                continue;
             }
 
-            return $category->getIndustry() === $industry;
-        });
+            // Industry filtering
+            if ($industry === null) {
+                // Without industry, only run universal analyzers
+                if (!$category->isUniversal()) {
+                    continue;
+                }
+            } else {
+                // With industry, run universal + industry-specific analyzers
+                if (!$category->isUniversal() && $category->getIndustry() !== $industry) {
+                    continue;
+                }
+            }
+
+            $filtered[] = $analyzer;
+        }
+
+        // Re-sort by profile priorities if available
+        if ($profile !== null) {
+            usort($filtered, function (LeadAnalyzerInterface $a, LeadAnalyzerInterface $b) use ($profile): int {
+                $configA = $profile->getAnalyzerConfig($a->getCategory()->value);
+                $configB = $profile->getAnalyzerConfig($b->getCategory()->value);
+
+                $priorityA = $configA['priority'] ?? $a->getPriority();
+                $priorityB = $configB['priority'] ?? $b->getPriority();
+
+                return $priorityA <=> $priorityB;
+            });
+        }
+
+        return $filtered;
     }
 
     /**
@@ -147,6 +190,7 @@ final class AnalyzeLeadMessageHandler
         \App\Entity\Lead $lead,
         array $analyzers,
         ?Industry $industry,
+        ?DiscoveryProfile $profile = null,
     ): void {
         // Get previous analysis for delta calculation
         $previousAnalysis = $this->analysisRepository->findLatestByLead($lead);
@@ -182,7 +226,19 @@ final class AnalyzeLeadMessageHandler
                 $result = $analyzer->analyze($lead);
 
                 if ($result->success) {
-                    $issuesArray = array_map(fn (Issue $issue) => $issue->toStorageArray(), $result->issues);
+                    // Filter out ignored issue codes if profile specifies them
+                    $issues = $result->issues;
+                    if ($profile !== null) {
+                        $ignoreCodes = $profile->getIgnoreCodes($category->value);
+                        if (!empty($ignoreCodes)) {
+                            $issues = array_filter(
+                                $issues,
+                                fn (Issue $issue) => !in_array($issue->code, $ignoreCodes, true)
+                            );
+                        }
+                    }
+
+                    $issuesArray = array_map(fn (Issue $issue) => $issue->toStorageArray(), $issues);
 
                     $analysisResult->setRawData($result->rawData);
                     $analysisResult->setIssues($issuesArray);
@@ -229,5 +285,27 @@ final class AnalyzeLeadMessageHandler
         }
 
         $this->em->flush();
+
+        // Create data snapshot for trending/history
+        if ($analysis->getStatus() === AnalysisStatus::COMPLETED) {
+            $this->snapshotService->createSnapshot($analysis);
+            $this->em->flush();
+
+            $this->logger->info('Created analysis snapshot', [
+                'lead_id' => $lead->getId()?->toRfc4122(),
+                'domain' => $lead->getDomain(),
+            ]);
+        }
+
+        // Dispatch screenshot capture asynchronously
+        $leadId = $lead->getId();
+        if ($leadId !== null) {
+            $this->messageBus->dispatch(new TakeScreenshotMessage($leadId));
+
+            $this->logger->info('Dispatched screenshot capture', [
+                'lead_id' => $leadId->toRfc4122(),
+                'domain' => $lead->getDomain(),
+            ]);
+        }
     }
 }

@@ -66,6 +66,11 @@ class EshopAnalyzer extends AbstractLeadAnalyzer
         return [Industry::ESHOP];
     }
 
+    public function getDescription(): string
+    {
+        return 'Kontroluje e-shop specifické prvky: produkty, košík, platby, doprava, trust signály.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

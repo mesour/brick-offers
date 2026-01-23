@@ -6,16 +6,18 @@ namespace App\Controller\Admin;
 
 use App\Entity\MarketWatchFilter;
 use App\Entity\User;
+use App\Enum\DemandSignalType;
 use App\Enum\Industry;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ArrayField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
-use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\NumberField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 
 class MarketWatchFilterCrudController extends AbstractTenantCrudController
@@ -30,7 +32,7 @@ class MarketWatchFilterCrudController extends AbstractTenantCrudController
         return $crud
             ->setEntityLabelInSingular('Filtr sledování trhu')
             ->setEntityLabelInPlural('Filtry sledování trhu')
-            ->setSearchFields(['name', 'keywords'])
+            ->setSearchFields(['name'])
             ->setDefaultSort(['createdAt' => 'DESC'])
             ->showEntityActionsInlined();
     }
@@ -52,29 +54,46 @@ class MarketWatchFilterCrudController extends AbstractTenantCrudController
             ->setLabel('Název')
             ->setRequired(true);
 
-        yield TextField::new('keywords')
+        yield ArrayField::new('keywords')
             ->setLabel('Klíčová slova')
-            ->setHelp('Oddělená čárkou');
+            ->setHelp('Každé klíčové slovo na nový řádek');
 
         yield ChoiceField::new('industries')
             ->setLabel('Odvětví')
             ->setChoices(array_combine(
-                array_map(fn ($i) => $i->value, Industry::cases()),
-                Industry::cases()
+                array_map(fn (Industry $i) => $i->getLabel(), Industry::cases()),
+                array_map(fn (Industry $i) => $i->value, Industry::cases())
             ))
             ->allowMultipleChoices()
             ->hideOnIndex();
 
-        yield TextField::new('regions')
+        yield ChoiceField::new('signalTypes')
+            ->setLabel('Typy signálů')
+            ->setChoices(array_combine(
+                array_map(fn (DemandSignalType $t) => $t->getLabel(), DemandSignalType::cases()),
+                array_map(fn (DemandSignalType $t) => $t->value, DemandSignalType::cases())
+            ))
+            ->allowMultipleChoices()
+            ->hideOnIndex();
+
+        yield ArrayField::new('regions')
             ->setLabel('Regiony')
+            ->setHelp('Každý region na nový řádek')
             ->hideOnIndex();
 
-        yield IntegerField::new('minScore')
-            ->setLabel('Min. skóre')
+        yield ArrayField::new('excludeKeywords')
+            ->setLabel('Vyloučit klíčová slova')
+            ->setHelp('Signály obsahující tato slova budou ignorovány')
             ->hideOnIndex();
 
-        yield IntegerField::new('maxScore')
-            ->setLabel('Max. skóre')
+        yield NumberField::new('minValue')
+            ->setLabel('Min. hodnota')
+            ->setHelp('Minimální hodnota zakázky/poptávky')
+            ->hideOnIndex();
+
+        yield NumberField::new('maxValue')
+            ->setLabel('Max. hodnota')
+            ->setHelp('Maximální hodnota zakázky/poptávky')
             ->hideOnIndex();
 
         yield BooleanField::new('active')
@@ -92,7 +111,6 @@ class MarketWatchFilterCrudController extends AbstractTenantCrudController
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
-            ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm();
     }
 }

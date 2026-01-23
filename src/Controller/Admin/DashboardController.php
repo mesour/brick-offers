@@ -11,6 +11,7 @@ use App\Entity\Company;
 use App\Entity\CompetitorSnapshot;
 use App\Entity\DemandSignal;
 use App\Entity\DemandSignalSubscription;
+use App\Entity\DiscoveryProfile;
 use App\Entity\EmailBlacklist;
 use App\Entity\EmailLog;
 use App\Entity\EmailTemplate;
@@ -22,7 +23,6 @@ use App\Entity\MonitoredDomainSubscription;
 use App\Entity\Offer;
 use App\Entity\Proposal;
 use App\Entity\User;
-use App\Entity\UserAnalyzerConfig;
 use App\Entity\UserCompanyNote;
 use App\Entity\UserEmailTemplate;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
@@ -62,24 +62,25 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToDashboard('Dashboard', 'fa fa-home');
 
         yield MenuItem::section('Lead Pipeline');
+        yield MenuItem::linkToCrud('Discovery Profiles', 'fa fa-search-plus', DiscoveryProfile::class);
         yield MenuItem::linkToCrud('Leads', 'fa fa-user-plus', Lead::class);
-        yield MenuItem::linkToCrud('Companies', 'fa fa-building', Company::class);
-        yield MenuItem::linkToCrud('Analyses', 'fa fa-chart-bar', Analysis::class);
-        yield MenuItem::linkToCrud('Analysis Results', 'fa fa-list-check', AnalysisResult::class);
-        yield MenuItem::linkToCrud('Snapshots', 'fa fa-camera', AnalysisSnapshot::class);
-
-        yield MenuItem::section('Workflow');
         yield MenuItem::linkToCrud('Proposals', 'fa fa-file-lines', Proposal::class);
         yield MenuItem::linkToCrud('Offers', 'fa fa-envelope', Offer::class);
+        yield MenuItem::linkToCrud('Snapshots', 'fa fa-camera', AnalysisSnapshot::class);
+
+        yield MenuItem::section('Firmy');
+        yield MenuItem::linkToCrud('Companies', 'fa fa-building', Company::class);
+        yield MenuItem::linkToCrud('Poznámky', 'fa fa-sticky-note', UserCompanyNote::class);
 
         yield MenuItem::section('Email');
-        yield MenuItem::linkToCrud('Email Templates', 'fa fa-file-code', EmailTemplate::class);
-        yield MenuItem::linkToCrud('User Templates', 'fa fa-file-alt', UserEmailTemplate::class);
+        yield MenuItem::linkToCrud('Moje šablony', 'fa fa-file-alt', UserEmailTemplate::class);
+        yield MenuItem::linkToCrud('Systémové šablony', 'fa fa-file-code', EmailTemplate::class);
         yield MenuItem::linkToCrud('Email Log', 'fa fa-paper-plane', EmailLog::class);
         yield MenuItem::linkToCrud('Blacklist', 'fa fa-ban', EmailBlacklist::class);
 
         yield MenuItem::section('Monitoring');
-        yield MenuItem::linkToCrud('Monitored Domains', 'fa fa-eye', MonitoredDomain::class);
+        yield MenuItem::linkToCrud('Monitored Domains', 'fa fa-eye', MonitoredDomain::class)
+            ->setPermission('ROLE_SUPER_ADMIN');
         yield MenuItem::linkToCrud('Domain Subscriptions', 'fa fa-bell', MonitoredDomainSubscription::class);
         yield MenuItem::linkToCrud('Competitor Snapshots', 'fa fa-binoculars', CompetitorSnapshot::class);
         yield MenuItem::linkToCrud('Demand Signals', 'fa fa-signal', DemandSignal::class);
@@ -89,8 +90,6 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::section('Configuration');
         yield MenuItem::linkToCrud('Users', 'fa fa-users', User::class)
             ->setPermission(User::PERMISSION_USERS_READ);
-        yield MenuItem::linkToCrud('Analyzer Config', 'fa fa-cog', UserAnalyzerConfig::class);
-        yield MenuItem::linkToCrud('Company Notes', 'fa fa-sticky-note', UserCompanyNote::class);
         yield MenuItem::linkToCrud('Industry Benchmarks', 'fa fa-chart-line', IndustryBenchmark::class);
 
         yield MenuItem::section('');

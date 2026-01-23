@@ -7,14 +7,21 @@ namespace App\Controller\Admin;
 use App\Entity\Proposal;
 use App\Entity\User;
 use App\Enum\Industry;
+use App\Enum\LeadStatus;
 use App\Enum\ProposalStatus;
 use App\Enum\ProposalType;
+use App\Service\Offer\OfferService;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
@@ -33,12 +40,29 @@ class ProposalCrudController extends AbstractTenantCrudController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly AdminUrlGenerator $adminUrlGenerator,
+        private readonly OfferService $offerService,
     ) {
     }
 
     public static function getEntityFqcn(): string
     {
         return Proposal::class;
+    }
+
+    public function createIndexQueryBuilder(
+        SearchDto $searchDto,
+        EntityDto $entityDto,
+        FieldCollection $fields,
+        FilterCollection $filters
+    ): QueryBuilder {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters);
+        $alias = $qb->getRootAliases()[0];
+
+        // Eager load lead to avoid N+1 queries in action displayIf callbacks
+        $qb->leftJoin(sprintf('%s.lead', $alias), 'l')
+            ->addSelect('l');
+
+        return $qb;
     }
 
     public function configureCrud(Crud $crud): Crud
@@ -60,25 +84,44 @@ class ProposalCrudController extends AbstractTenantCrudController
 
         $rejectAction = Action::new('reject', 'Odmítnout', 'fa fa-times')
             ->linkToCrudAction('rejectProposal')
-            ->addCssClass('btn btn-danger')
+            ->addCssClass('btn btn-outline-danger')
             ->displayIf(fn (Proposal $p) => $p->getStatus()->canReject() && $this->hasPermission(User::PERMISSION_PROPOSALS_REJECT));
+
+        $rejectAndDismissAction = Action::new('rejectAndDismiss', 'Odmítnout + zamítnout lead', 'fa fa-ban')
+            ->linkToCrudAction('rejectProposalAndDismissLead')
+            ->addCssClass('btn btn-danger')
+            ->displayIf(fn (Proposal $p) => $p->getStatus()->canReject()
+                && $p->getLead() !== null
+                && $p->getLead()->getStatus() !== LeadStatus::DISMISSED
+                && $this->hasPermission(User::PERMISSION_PROPOSALS_REJECT));
 
         $previewAction = Action::new('preview', 'Náhled', 'fa fa-eye')
             ->linkToUrl(fn (Proposal $p) => $p->getOutput('html_url') ?? '#')
             ->setHtmlAttributes(['target' => '_blank'])
             ->displayIf(fn (Proposal $p) => $p->getOutput('html_url') !== null);
 
+        $createOfferAction = Action::new('createOffer', 'Vytvořit nabídku', 'fa fa-envelope')
+            ->linkToCrudAction('createOffer')
+            ->addCssClass('btn btn-primary')
+            ->displayIf(fn (Proposal $p) => $p->getStatus() === ProposalStatus::APPROVED
+                && $p->getLead() !== null
+                && $this->hasPermission(User::PERMISSION_OFFERS_WRITE));
+
         return $actions
             ->add(Crud::PAGE_INDEX, Action::DETAIL)
             ->add(Crud::PAGE_INDEX, $approveAction)
             ->add(Crud::PAGE_INDEX, $rejectAction)
+            ->add(Crud::PAGE_INDEX, $rejectAndDismissAction)
             ->add(Crud::PAGE_INDEX, $previewAction)
+            ->add(Crud::PAGE_INDEX, $createOfferAction)
             ->add(Crud::PAGE_DETAIL, $approveAction)
             ->add(Crud::PAGE_DETAIL, $rejectAction)
+            ->add(Crud::PAGE_DETAIL, $rejectAndDismissAction)
             ->add(Crud::PAGE_DETAIL, $previewAction)
+            ->add(Crud::PAGE_DETAIL, $createOfferAction)
             ->update(Crud::PAGE_INDEX, Action::EDIT, fn (Action $action) => $action
                 ->displayIf(fn (Proposal $p) => $p->getStatus()->isEditable()))
-            ->setPermission(Action::NEW, User::PERMISSION_PROPOSALS_APPROVE)
+            ->disable(Action::NEW) // Proposals are AI-generated, not manually created
             ->setPermission(Action::EDIT, User::PERMISSION_PROPOSALS_APPROVE)
             ->setPermission(Action::DELETE, User::PERMISSION_PROPOSALS_APPROVE);
     }
@@ -201,8 +244,7 @@ class ProposalCrudController extends AbstractTenantCrudController
 
         yield AssociationField::new('user')
             ->setLabel('Uživatel')
-            ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm();
     }
 
     public function approveProposal(AdminContext $context): RedirectResponse
@@ -235,5 +277,70 @@ class ProposalCrudController extends AbstractTenantCrudController
             ->setController(self::class)
             ->setAction(Action::INDEX)
             ->generateUrl());
+    }
+
+    public function rejectProposalAndDismissLead(AdminContext $context): RedirectResponse
+    {
+        /** @var Proposal $proposal */
+        $proposal = $context->getEntity()->getInstance();
+        $lead = $proposal->getLead();
+
+        $proposal->reject();
+
+        if ($lead !== null && $lead->getStatus() !== LeadStatus::DISMISSED) {
+            $lead->setStatus(LeadStatus::DISMISSED);
+        }
+
+        $this->entityManager->flush();
+
+        $this->addFlash('warning', 'Návrh byl odmítnut a lead zamítnut.');
+
+        return $this->redirect($this->adminUrlGenerator
+            ->setController(self::class)
+            ->setAction(Action::INDEX)
+            ->generateUrl());
+    }
+
+    public function createOffer(AdminContext $context): RedirectResponse
+    {
+        /** @var Proposal $proposal */
+        $proposal = $context->getEntity()->getInstance();
+        $lead = $proposal->getLead();
+
+        if ($lead === null) {
+            $this->addFlash('error', 'Návrh nemá přiřazený lead.');
+
+            return $this->redirect($this->adminUrlGenerator
+                ->setController(self::class)
+                ->setAction(Action::INDEX)
+                ->generateUrl());
+        }
+
+        /** @var User $user */
+        $user = $this->getUser();
+
+        try {
+            $offer = $this->offerService->createAndGenerate(
+                lead: $lead,
+                user: $user,
+                proposal: $proposal,
+            );
+
+            $this->addFlash('success', sprintf('Nabídka "%s" byla vytvořena.', $offer->getSubject() ?: 'Nová nabídka'));
+
+            return $this->redirect($this->adminUrlGenerator
+                ->setController(OfferCrudController::class)
+                ->setAction(Action::DETAIL)
+                ->setEntityId($offer->getId()?->toRfc4122())
+                ->generateUrl());
+        } catch (\Throwable $e) {
+            $this->addFlash('error', 'Nepodařilo se vytvořit nabídku: ' . $e->getMessage());
+
+            return $this->redirect($this->adminUrlGenerator
+                ->setController(self::class)
+                ->setAction(Action::DETAIL)
+                ->setEntityId($proposal->getId()?->toRfc4122())
+                ->generateUrl());
+        }
     }
 }

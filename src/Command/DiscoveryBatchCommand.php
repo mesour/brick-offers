@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Message\BatchDiscoveryMessage;
 use App\MessageHandler\BatchDiscoveryMessageHandler;
+use App\Repository\DiscoveryProfileRepository;
 use App\Repository\UserRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -17,13 +18,14 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
     name: 'app:discovery:batch',
-    description: 'Run batch discovery for users with configured discovery settings',
+    description: 'Run batch discovery using Discovery Profiles',
 )]
 class DiscoveryBatchCommand extends Command
 {
     public function __construct(
         private readonly BatchDiscoveryMessageHandler $handler,
         private readonly UserRepository $userRepository,
+        private readonly DiscoveryProfileRepository $profileRepository,
         private readonly MessageBusInterface $messageBus,
     ) {
         parent::__construct();
@@ -39,10 +41,16 @@ class DiscoveryBatchCommand extends Command
                 'Run discovery for specific user code only'
             )
             ->addOption(
+                'profile-name',
+                'p',
+                InputOption::VALUE_REQUIRED,
+                'Run discovery for specific profile name (requires --user)'
+            )
+            ->addOption(
                 'all-users',
                 null,
                 InputOption::VALUE_NONE,
-                'Run discovery for all users with enabled discovery settings'
+                'Run discovery for all users with enabled discovery profiles'
             )
             ->addOption(
                 'dry-run',
@@ -60,7 +68,7 @@ class DiscoveryBatchCommand extends Command
                 'show-config',
                 null,
                 InputOption::VALUE_NONE,
-                'Show discovery configuration for users'
+                'Show discovery profiles configuration'
             );
     }
 
@@ -68,6 +76,7 @@ class DiscoveryBatchCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $userCode = $input->getOption('user');
+        $profileName = $input->getOption('profile-name');
         $allUsers = $input->getOption('all-users');
         $dryRun = $input->getOption('dry-run');
         $async = $input->getOption('async');
@@ -86,6 +95,12 @@ class DiscoveryBatchCommand extends Command
             return Command::FAILURE;
         }
 
+        if ($profileName !== null && $userCode === null) {
+            $io->error('--profile-name requires --user option');
+
+            return Command::FAILURE;
+        }
+
         $io->title('Batch Discovery');
 
         // Show config mode
@@ -95,19 +110,21 @@ class DiscoveryBatchCommand extends Command
 
         $io->table([], [
             ['User', $userCode ?? 'All users'],
+            ['Profile', $profileName ?? 'All active profiles'],
             ['Dry run', $dryRun ? 'Yes' : 'No'],
             ['Async', $async ? 'Yes' : 'No'],
         ]);
 
         if ($async) {
-            return $this->executeAsync($io, $userCode, $allUsers, $dryRun);
+            return $this->executeAsync($io, $userCode, $profileName, $allUsers, $dryRun);
         }
 
         // Execute synchronously
         $message = new BatchDiscoveryMessage(
             userCode: $userCode,
+            profileName: $profileName,
             allUsers: $allUsers,
-            dryRun: $dryRun
+            dryRun: $dryRun,
         );
         $result = ($this->handler)($message);
 
@@ -115,8 +132,9 @@ class DiscoveryBatchCommand extends Command
 
         $io->definitionList(
             ['Users processed' => $result['users_processed']],
+            ['Profiles processed' => $result['profiles_processed']],
             ['Jobs dispatched' => $result['jobs_dispatched']],
-            ['Users skipped' => $result['users_skipped']],
+            ['Profiles skipped' => $result['profiles_skipped']],
         );
 
         if ($dryRun) {
@@ -124,15 +142,20 @@ class DiscoveryBatchCommand extends Command
         }
 
         if ($result['jobs_dispatched'] === 0) {
-            $io->warning('No discovery jobs were dispatched. Check that users have discovery enabled in their settings.');
+            $io->warning('No discovery jobs were dispatched. Check that users have discovery profiles enabled.');
         } else {
-            $io->success(sprintf('Dispatched %d discovery job(s) for %d user(s)', $result['jobs_dispatched'], $result['users_processed']));
+            $io->success(sprintf(
+                'Dispatched %d discovery job(s) for %d profile(s) from %d user(s)',
+                $result['jobs_dispatched'],
+                $result['profiles_processed'],
+                $result['users_processed']
+            ));
         }
 
         return Command::SUCCESS;
     }
 
-    private function executeAsync(SymfonyStyle $io, ?string $userCode, bool $allUsers, bool $dryRun): int
+    private function executeAsync(SymfonyStyle $io, ?string $userCode, ?string $profileName, bool $allUsers, bool $dryRun): int
     {
         $io->text('Dispatching batch discovery job to message queue...');
 
@@ -142,8 +165,9 @@ class DiscoveryBatchCommand extends Command
 
         $this->messageBus->dispatch(new BatchDiscoveryMessage(
             userCode: $userCode,
+            profileName: $profileName,
             allUsers: $allUsers,
-            dryRun: $dryRun
+            dryRun: $dryRun,
         ));
 
         $io->success('Batch discovery job dispatched to queue');
@@ -153,7 +177,7 @@ class DiscoveryBatchCommand extends Command
 
     private function showConfig(SymfonyStyle $io, ?string $userCode): int
     {
-        $io->section('Discovery Configuration');
+        $io->section('Discovery Profiles');
 
         $users = $userCode !== null
             ? (($u = $this->userRepository->findByCode($userCode)) !== null ? [$u] : [])
@@ -166,25 +190,35 @@ class DiscoveryBatchCommand extends Command
         }
 
         foreach ($users as $user) {
-            $settings = $user->getSetting('discovery', []);
-            $enabled = $settings['enabled'] ?? false;
-            $sources = $settings['sources'] ?? [];
-            $queries = $settings['queries'] ?? [];
-            $limit = $settings['limit'] ?? 50;
-
             $io->writeln(sprintf(
-                '<info>%s</info> (%s) - %s',
+                '<info>%s</info> (%s)',
                 $user->getCode(),
-                $user->getName(),
-                $enabled ? '<fg=green>Enabled</>' : '<fg=gray>Disabled</>'
+                $user->getName()
             ));
 
-            if ($enabled) {
-                $io->table([], [
-                    ['Sources', implode(', ', $sources) ?: '<none>'],
-                    ['Queries', count($queries) > 0 ? implode(', ', array_slice($queries, 0, 3)) . (count($queries) > 3 ? '...' : '') : '<none>'],
-                    ['Limit', $limit],
-                ]);
+            $profiles = $this->profileRepository->findByUser($user);
+
+            if (empty($profiles)) {
+                $io->text('  No discovery profiles');
+            } else {
+                foreach ($profiles as $profile) {
+                    $io->writeln(sprintf(
+                        '  <comment>%s</comment> %s - %s',
+                        $profile->getName(),
+                        $profile->isDefault() ? '(default)' : '',
+                        $profile->isDiscoveryEnabled() ? '<fg=green>Enabled</>' : '<fg=gray>Disabled</>'
+                    ));
+
+                    if ($profile->isDiscoveryEnabled()) {
+                        $io->table([], [
+                            ['Sources', implode(', ', $profile->getDiscoverySources()) ?: '<none>'],
+                            ['Queries', count($profile->getDiscoveryQueries()) > 0 ? implode(', ', array_slice($profile->getDiscoveryQueries(), 0, 3)) . (count($profile->getDiscoveryQueries()) > 3 ? '...' : '') : '<none>'],
+                            ['Limit', $profile->getDiscoveryLimit()],
+                            ['Industry', $profile->getIndustry()?->value ?? '<none>'],
+                            ['Auto-analyze', $profile->isAutoAnalyze() ? 'Yes' : 'No'],
+                        ]);
+                    }
+                }
             }
 
             $io->newLine();

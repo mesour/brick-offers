@@ -22,6 +22,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\EmailField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use Symfony\Component\Form\Extension\Core\Type\PasswordType;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -76,11 +77,11 @@ class UserCrudController extends AbstractCrudController
         if ($user->isAdmin()) {
             // Admin sees themselves and their sub-accounts
             $qb->andWhere(sprintf('%s.id = :userId OR %s.adminAccount = :userId', $alias, $alias))
-                ->setParameter('userId', $user->getId()?->toBinary());
+                ->setParameter('userId', $user->getId());
         } else {
             // Non-admin users can only see themselves
             $qb->andWhere(sprintf('%s.id = :userId', $alias))
-                ->setParameter('userId', $user->getId()?->toBinary());
+                ->setParameter('userId', $user->getId());
         }
 
         return $qb;
@@ -118,7 +119,8 @@ class UserCrudController extends AbstractCrudController
             ])
             ->allowMultipleChoices()
             ->renderExpanded()
-            ->hideOnIndex();
+            ->hideOnIndex()
+            ->hideOnForm(); // Sub-users always have ROLE_USER, set automatically
 
         yield ChoiceField::new('permissions')
             ->setLabel('Oprávnění')
@@ -151,7 +153,7 @@ class UserCrudController extends AbstractCrudController
         yield AssociationField::new('adminAccount')
             ->setLabel('Admin účet')
             ->hideOnIndex()
-            ->setFormTypeOption('disabled', true);
+            ->hideOnForm(); // Set automatically when creating sub-users
 
         yield BooleanField::new('active')
             ->setLabel('Aktivní');
@@ -159,7 +161,14 @@ class UserCrudController extends AbstractCrudController
         yield ArrayField::new('limits')
             ->setLabel('Limity')
             ->hideOnIndex()
-            ->setHelp('Pouze pro admin účty - nastavuje se přes CLI');
+            ->hideOnForm(); // Set via CLI only (app:user:set-limits)
+
+        yield TextareaField::new('excludedDomainsText')
+            ->setLabel('Vyloučené domény')
+            ->setHelp('Jeden pattern na řádek. Wildcards: *.example.com (subdomény), example.* (TLD), *example* (obsahuje)')
+            ->hideOnIndex()
+            ->onlyOnForms()
+            ->setNumOfRows(5);
 
         yield DateTimeField::new('createdAt')
             ->setLabel('Vytvořeno')
@@ -200,20 +209,12 @@ class UserCrudController extends AbstractCrudController
 
     private function hashPassword(User $user): void
     {
-        /** @var string|null $plainPassword */
-        $plainPassword = $user->getPlainPassword ?? null;
-
-        // Check if plainPassword property exists via reflection (added dynamically by form)
-        $ref = new \ReflectionClass($user);
-        if ($ref->hasProperty('plainPassword')) {
-            $prop = $ref->getProperty('plainPassword');
-            $prop->setAccessible(true);
-            $plainPassword = $prop->getValue($user);
-        }
+        $plainPassword = $user->getPlainPassword();
 
         if ($plainPassword !== null && $plainPassword !== '') {
             $hashedPassword = $this->passwordHasher->hashPassword($user, $plainPassword);
             $user->setPassword($hashedPassword);
+            $user->setPlainPassword(null); // Clear for security
         }
     }
 }

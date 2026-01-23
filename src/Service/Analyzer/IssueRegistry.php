@@ -343,6 +343,34 @@ final class IssueRegistry
             'description' => 'Stránka obsahuje velké JavaScript soubory v <head> bez atributu async nebo defer.',
             'impact' => 'Blokující skripty zpomalují vykreslení stránky, protože prohlížeč musí čekat na jejich stažení a spuštění.',
         ],
+        'outdated_ancient_copyright' => [
+            'category' => IssueCategory::OUTDATED_CODE,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Velmi starý web (10+ let)',
+            'description' => 'Copyright v patičce indikuje, že web je starší než 10 let bez zásadní aktualizace.',
+            'impact' => 'Web je pravděpodobně technicky i vizuálně velmi zastaralý a potřebuje kompletní redesign.',
+        ],
+        'outdated_old_copyright' => [
+            'category' => IssueCategory::OUTDATED_CODE,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Starý web (5-10 let)',
+            'description' => 'Copyright v patičce indikuje, že web je starší než 5 let.',
+            'impact' => 'Web je pravděpodobně zastaralý a mohl by těžit z modernizace designu a technologií.',
+        ],
+        'outdated_stale_copyright' => [
+            'category' => IssueCategory::OUTDATED_CODE,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Neaktuální copyright rok',
+            'description' => 'Copyright v patičce obsahuje starší rok než aktuální.',
+            'impact' => 'Signalizuje, že web není aktivně udržován nebo že copyright nebyl aktualizován.',
+        ],
+        'outdated_last_modified_old' => [
+            'category' => IssueCategory::OUTDATED_CODE,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Stránka dlouho neaktualizována',
+            'description' => 'Podle HTTP hlavičky Last-Modified nebyla stránka dlouho aktualizována.',
+            'impact' => 'Může indikovat zanedbaný nebo opuštěný web.',
+        ],
 
         // Performance Issues
         'perf_lcp_poor' => [
@@ -628,6 +656,323 @@ final class IssueRegistry
         ],
 
         // ===========================================
+        // CMS QUALITY ISSUES
+        // ===========================================
+
+        'cms_free_platform' => [
+            'category' => IssueCategory::CMS_QUALITY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Free/amatérská platforma',
+            'description' => 'Web je postaven na bezplatné nebo amatérské platformě.',
+            'impact' => 'Tyto platformy mají omezené možnosti, často zobrazují reklamy a působí neprofesionálně.',
+        ],
+        'cms_subdomain_hosting' => [
+            'category' => IssueCategory::CMS_QUALITY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Web na subdoméně platformy',
+            'description' => 'Web běží na subdoméně poskytovatele (např. firma.webnode.cz).',
+            'impact' => 'Subdoména působí neprofesionálně a škodí SEO. Vlastní doména je základ profesionálního webu.',
+        ],
+        'cms_builder_limitations' => [
+            'category' => IssueCategory::CMS_QUALITY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Omezení webového stavebníku',
+            'description' => 'Web používá builder s omezenými možnostmi (Wix, Squarespace, Webnode).',
+            'impact' => 'Buildery mají omezené možnosti úprav, SEO a integrace.',
+        ],
+        'cms_wordpress_default_theme' => [
+            'category' => IssueCategory::CMS_QUALITY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'WordPress s výchozím tématem',
+            'description' => 'Web používá výchozí WordPress téma bez úprav.',
+            'impact' => 'Generický vzhled bez vlastní identity. Tisíce webů vypadají stejně.',
+        ],
+        'cms_outdated_platform' => [
+            'category' => IssueCategory::CMS_QUALITY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Zastaralá platforma',
+            'description' => 'Web běží na zastaralé nebo nepodporované platformě.',
+            'impact' => 'Zastaralé platformy představují bezpečnostní riziko a nemají moderní funkce.',
+        ],
+        'cms_platform_ads' => [
+            'category' => IssueCategory::CMS_QUALITY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Reklamy poskytovatele na webu',
+            'description' => 'Na webu jsou viditelné reklamy poskytovatele hostingu/platformy.',
+            'impact' => 'Reklamy třetích stran působí extrémně neprofesionálně.',
+        ],
+
+        // ===========================================
+        // CONTENT QUALITY ISSUES
+        // ===========================================
+
+        'content_small_images' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Malé nebo nekvalitní obrázky',
+            'description' => 'Web obsahuje obrázky s nízkým rozlišením nebo malými rozměry.',
+            'impact' => 'Nekvalitní obrázky působí neprofesionálně, zejména na retina displejích.',
+        ],
+        'content_blurry_images' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Rozmazané obrázky',
+            'description' => 'Obrázky jsou roztažené přes jejich původní rozlišení.',
+            'impact' => 'Rozmazané obrázky signalizují neprofesionální přístup.',
+        ],
+        'content_broken_images' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Rozbité obrázky',
+            'description' => 'Na webu jsou obrázky, které se nenačítají (404).',
+            'impact' => 'Rozbité obrázky působí zanedbaně a poškozují uživatelský zážitek.',
+        ],
+        'content_placeholder_text' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Placeholder text',
+            'description' => 'Web obsahuje nevyplněný placeholder text (Lorem ipsum, Váš text zde).',
+            'impact' => 'Placeholder text signalizuje nedokončený nebo zanedbaný web.',
+        ],
+        'content_empty_sections' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Prázdné sekce',
+            'description' => 'Na stránce jsou prázdné nebo téměř prázdné sekce.',
+            'impact' => 'Prázdné sekce působí nedokončeně.',
+        ],
+        'content_outdated_copyright' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Zastaralý copyright rok',
+            'description' => 'Copyright v patičce obsahuje starý rok.',
+            'impact' => 'Signalizuje, že web není aktivně udržován.',
+        ],
+        'content_generic_stock_photos' => [
+            'category' => IssueCategory::CONTENT_QUALITY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Generické stock fotky',
+            'description' => 'Web používá typické stock fotografie (handshake, laptop, smiling people).',
+            'impact' => 'Stock fotky snižují autenticitu a důvěryhodnost.',
+        ],
+
+        // ===========================================
+        // BRANDING ISSUES
+        // ===========================================
+
+        'branding_no_favicon' => [
+            'category' => IssueCategory::BRANDING,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí favicon',
+            'description' => 'Web nemá definovanou ikonu favicon.',
+            'impact' => 'Favicon je základní prvek brandingu, zobrazuje se v záložkách a výsledcích.',
+        ],
+        'branding_default_favicon' => [
+            'category' => IssueCategory::BRANDING,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Výchozí favicon platformy',
+            'description' => 'Web používá výchozí favicon CMS nebo platformy.',
+            'impact' => 'Chybí vlastní identita, web vypadá jako tisíce dalších.',
+        ],
+        'branding_no_logo' => [
+            'category' => IssueCategory::BRANDING,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí logo',
+            'description' => 'Web nezobrazuje logo společnosti.',
+            'impact' => 'Logo je klíčový prvek brandové identity.',
+        ],
+        'branding_low_quality_logo' => [
+            'category' => IssueCategory::BRANDING,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nekvalitní logo',
+            'description' => 'Logo má nízké rozlišení nebo je rozmazané.',
+            'impact' => 'Nekvalitní logo poškozuje profesionální dojem.',
+        ],
+        'branding_inconsistent_colors' => [
+            'category' => IssueCategory::BRANDING,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nekonzistentní barevné schéma',
+            'description' => 'Web používá příliš mnoho různých barev bez jasného systému.',
+            'impact' => 'Nekonzistentní barvy snižují profesionalitu a rozpoznatelnost značky.',
+        ],
+        'branding_no_brand_identity' => [
+            'category' => IssueCategory::BRANDING,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí brandová identita',
+            'description' => 'Web nemá jasně definovanou vizuální identitu.',
+            'impact' => 'Bez jasné identity je web nezapamatovatelný.',
+        ],
+
+        // ===========================================
+        // NAVIGATION & UX ISSUES
+        // ===========================================
+
+        'nav_too_many_items' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Příliš mnoho položek v menu',
+            'description' => 'Hlavní navigace obsahuje více než 7 položek.',
+            'impact' => 'Přehlcené menu mate uživatele a zhoršuje orientaci.',
+        ],
+        'nav_deep_hierarchy' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Příliš hluboká navigace',
+            'description' => 'Navigace má více než 3 úrovně zanořených menu.',
+            'impact' => 'Hluboká hierarchie ztěžuje nalezení obsahu.',
+        ],
+        'nav_no_breadcrumbs' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Chybí drobečková navigace',
+            'description' => 'Web nepoužívá breadcrumbs pro orientaci.',
+            'impact' => 'Breadcrumbs pomáhají uživatelům s orientací a zlepšují SEO.',
+        ],
+        'nav_no_search' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Chybí vyhledávání',
+            'description' => 'Web nemá funkci vyhledávání.',
+            'impact' => 'Uživatelé nemohou rychle najít konkrétní obsah.',
+        ],
+        'nav_broken_links' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Nefunkční odkazy',
+            'description' => 'Na webu jsou odkazy vedoucí na neexistující stránky.',
+            'impact' => 'Rozbité odkazy frustrují uživatele a škodí SEO.',
+        ],
+        'nav_no_mobile_menu' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí mobilní menu',
+            'description' => 'Navigace není přizpůsobena pro mobilní zařízení.',
+            'impact' => 'Uživatelé na mobilu nemohou procházet web.',
+        ],
+        'nav_inconsistent_navigation' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nekonzistentní navigace',
+            'description' => 'Navigace se liší na různých stránkách webu.',
+            'impact' => 'Nekonzistentní navigace mate uživatele.',
+        ],
+        'nav_no_404_page' => [
+            'category' => IssueCategory::NAVIGATION_UX,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Chybí vlastní 404 stránka',
+            'description' => 'Web nemá vlastní stránku pro neexistující URL.',
+            'impact' => 'Výchozí 404 stránka neposkytuje uživateli pomoc.',
+        ],
+
+        // ===========================================
+        // CONVERSION ISSUES
+        // ===========================================
+
+        'conversion_no_cta' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí výzva k akci (CTA)',
+            'description' => 'Stránka nemá jasné CTA tlačítko nebo odkaz.',
+            'impact' => 'Bez CTA návštěvníci nevědí, co mají udělat.',
+        ],
+        'conversion_weak_cta' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Slabé CTA',
+            'description' => 'CTA tlačítka používají generický text (Odeslat, Klikněte zde).',
+            'impact' => 'Konkrétní CTA text zvyšuje konverze.',
+        ],
+        'conversion_no_contact_form' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí kontaktní formulář',
+            'description' => 'Web nemá kontaktní formulář pro poptávky.',
+            'impact' => 'Formulář je nejsnazší způsob, jak získat leady.',
+        ],
+        'conversion_hidden_contact' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Kontakt těžko k nalezení',
+            'description' => 'Kontaktní informace nejsou snadno dostupné.',
+            'impact' => 'Uživatelé mohou odejít, když nenajdou kontakt.',
+        ],
+        'conversion_no_trust_signals' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí signály důvěry',
+            'description' => 'Web nezobrazuje certifikáty, ocenění nebo reference.',
+            'impact' => 'Trust signály zvyšují důvěryhodnost a konverze.',
+        ],
+        'conversion_no_social_proof' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Chybí social proof',
+            'description' => 'Web nezobrazuje recenze, počet klientů nebo loga partnerů.',
+            'impact' => 'Social proof přesvědčuje nerozhodnuté návštěvníky.',
+        ],
+        'conversion_no_phone' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí telefonní číslo',
+            'description' => 'Web nezobrazuje telefonní kontakt.',
+            'impact' => 'Někteří klienti preferují telefonický kontakt.',
+        ],
+        'conversion_no_email' => [
+            'category' => IssueCategory::CONVERSION,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí e-mail',
+            'description' => 'Web nezobrazuje e-mailovou adresu.',
+            'impact' => 'E-mail je základní kontaktní údaj.',
+        ],
+
+        // ===========================================
+        // LEGAL COMPLIANCE ISSUES (CZ)
+        // ===========================================
+
+        'legal_no_cookie_consent' => [
+            'category' => IssueCategory::LEGAL_COMPLIANCE,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí cookie consent',
+            'description' => 'Web neobsahuje cookie lištu nebo consent banner.',
+            'impact' => 'Porušení GDPR, riziko pokuty od ÚOOÚ.',
+        ],
+        'legal_no_privacy_policy' => [
+            'category' => IssueCategory::LEGAL_COMPLIANCE,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí zásady ochrany soukromí',
+            'description' => 'Web nemá stránku s privacy policy.',
+            'impact' => 'Povinné pro weby zpracovávající osobní údaje.',
+        ],
+        'legal_no_terms' => [
+            'category' => IssueCategory::LEGAL_COMPLIANCE,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí obchodní podmínky',
+            'description' => 'E-shop nebo služba nemá obchodní podmínky.',
+            'impact' => 'Obchodní podmínky chrání prodejce i kupujícího.',
+        ],
+        'legal_no_company_info' => [
+            'category' => IssueCategory::LEGAL_COMPLIANCE,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí identifikace provozovatele',
+            'description' => 'Web nezobrazuje IČO, sídlo nebo název firmy.',
+            'impact' => 'Zákonná povinnost pro podnikatele, budí nedůvěru.',
+        ],
+        'legal_no_withdrawal_info' => [
+            'category' => IssueCategory::LEGAL_COMPLIANCE,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybí poučení o odstoupení',
+            'description' => 'E-shop nemá informace o právu odstoupit od smlouvy.',
+            'impact' => 'Zákonná povinnost pro e-shopy vůči spotřebitelům.',
+        ],
+        'legal_cookies_before_consent' => [
+            'category' => IssueCategory::LEGAL_COMPLIANCE,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Cookies před souhlasem',
+            'description' => 'Web nastavuje sledovací cookies před udělením souhlasu.',
+            'impact' => 'Porušení GDPR - cookies smí být nastaveny až po souhlasu.',
+        ],
+
+        // ===========================================
         // E-SHOP INDUSTRY ISSUES
         // ===========================================
 
@@ -817,6 +1162,120 @@ final class IssueRegistry
             'title' => 'Chybí social proof',
             'description' => 'Web nezobrazuje loga klientů, počet realizací nebo ocenění.',
             'impact' => 'Social proof zvyšuje důvěryhodnost a přesvědčivost.',
+        ],
+
+        // Typography and Design Issues (Universal)
+        'typography_wrong_dashes' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nesprávné použití pomlček',
+            'description' => 'Text obsahuje spojovníky (-) místo pomlček (–) pro oddělení vět.',
+            'impact' => 'Typografické chyby snižují profesionální dojem webu.',
+        ],
+        'typography_multiple_spaces' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Vícenásobné mezery v textu',
+            'description' => 'Text obsahuje zbytečné vícenásobné mezery.',
+            'impact' => 'Ukazuje na nedbalou práci s obsahem.',
+        ],
+        'typography_wrong_quotes' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nesprávné uvozovky',
+            'description' => 'Text používá anglické uvozovky místo českých („").',
+            'impact' => 'České weby by měly používat správnou českou typografii.',
+        ],
+        'heading_multiple_h1' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Více H1 nadpisů',
+            'description' => 'Stránka obsahuje více než jeden H1 nadpis.',
+            'impact' => 'Narušuje SEO a sémantickou strukturu dokumentu.',
+        ],
+        'heading_no_h1' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Chybí H1 nadpis',
+            'description' => 'Stránka nemá žádný H1 nadpis.',
+            'impact' => 'H1 je klíčový pro SEO a strukturu stránky.',
+        ],
+        'heading_skipped_levels' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Přeskočené úrovně nadpisů',
+            'description' => 'Hierarchie nadpisů přeskakuje úrovně (např. H2 → H4).',
+            'impact' => 'Narušuje sémantickou strukturu a přístupnost.',
+        ],
+        'design_too_many_fonts' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Příliš mnoho fontů',
+            'description' => 'Web používá více než 4 různé rodiny písma.',
+            'impact' => 'Grafická nekonzistence a pomalejší načítání.',
+        ],
+        'design_inconsistent_font_sizes' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nekonzistentní velikosti písma',
+            'description' => 'Web používá příliš mnoho různých velikostí písma v inline stylech.',
+            'impact' => 'Naznačuje absenci designového systému.',
+        ],
+        'design_excessive_inline_styles' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nadměrné inline styly',
+            'description' => 'Stránka obsahuje velké množství inline CSS stylů.',
+            'impact' => 'Špatná udržovatelnost kódu a větší velikost stránky.',
+        ],
+        'design_too_many_colors' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Příliš mnoho barev',
+            'description' => 'Web používá více než 12 různých barev.',
+            'impact' => 'Grafická nekonzistence, chybí ucelené barevné schéma.',
+        ],
+        'design_excessive_br_tags' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nadměrné použití <br> tagů',
+            'description' => 'Stránka používá <br> tagy pro vytváření mezer.',
+            'impact' => 'Spacing by měl být řešen CSS, ne prázdnými řádky.',
+        ],
+        'design_excessive_nbsp' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Nadměrné použití &nbsp;',
+            'description' => 'Stránka obsahuje velké množství nezlomitelných mezer.',
+            'impact' => 'Naznačuje špatnou práci s CSS a layoutem.',
+        ],
+        'design_poor_image_alts' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Chybějící nebo generické alt texty',
+            'description' => 'Obrázky nemají alt texty nebo používají generické hodnoty.',
+            'impact' => 'Poškozuje SEO a přístupnost webu.',
+        ],
+        'design_deprecated_elements' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::CRITICAL,
+            'title' => 'Zastaralé HTML elementy',
+            'description' => 'Web používá deprecated elementy jako marquee nebo blink.',
+            'impact' => 'Zastaralý přístup k tvorbě webu.',
+        ],
+        'design_table_layout' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::RECOMMENDED,
+            'title' => 'Tabulkový layout',
+            'description' => 'Web pravděpodobně používá tabulky pro layout stránky.',
+            'impact' => 'Zastaralá technika, špatná pro responzivitu.',
+        ],
+        'design_autoplay_media' => [
+            'category' => IssueCategory::TYPOGRAPHY,
+            'severity' => IssueSeverity::OPTIMIZATION,
+            'title' => 'Automatické přehrávání médií',
+            'description' => 'Web automaticky přehrává video nebo audio.',
+            'impact' => 'Může obtěžovat uživatele a spotřebovávat data.',
         ],
 
         // ===========================================

@@ -1,0 +1,60 @@
+{% set html = field.value %}
+
+{% if html is empty %}
+    <p class="text-muted">Žádný obsah</p>
+{% else %}
+    <div class="html-preview-container">
+        <div class="mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleHtmlPreview(this)">
+                <i class="fa fa-code"></i> Zobrazit zdrojový kód
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openHtmlInNewWindow(this)">
+                <i class="fa fa-external-link"></i> Otevřít v novém okně
+            </button>
+        </div>
+
+        {# Rendered HTML preview in iframe #}
+        <div class="html-preview-rendered border rounded p-0" style="min-height: 300px; max-height: 600px; overflow: hidden;">
+            <iframe
+                srcdoc="{{ html|e('html_attr') }}"
+                style="width: 100%; height: 500px; border: none;"
+                sandbox="allow-same-origin"
+            ></iframe>
+        </div>
+
+        {# Source code view (hidden by default) #}
+        <div class="html-preview-source d-none">
+            <pre class="border rounded p-3 bg-light" style="max-height: 500px; overflow: auto;"><code>{{ html|e }}</code></pre>
+        </div>
+    </div>
+
+    <script>
+        function toggleHtmlPreview(btn) {
+            const container = btn.closest('.html-preview-container');
+            const rendered = container.querySelector('.html-preview-rendered');
+            const source = container.querySelector('.html-preview-source');
+            const icon = btn.querySelector('i');
+
+            if (source.classList.contains('d-none')) {
+                source.classList.remove('d-none');
+                rendered.classList.add('d-none');
+                icon.className = 'fa fa-eye';
+                btn.innerHTML = '<i class="fa fa-eye"></i> Zobrazit náhled';
+            } else {
+                source.classList.add('d-none');
+                rendered.classList.remove('d-none');
+                icon.className = 'fa fa-code';
+                btn.innerHTML = '<i class="fa fa-code"></i> Zobrazit zdrojový kód';
+            }
+        }
+
+        function openHtmlInNewWindow(btn) {
+            const container = btn.closest('.html-preview-container');
+            const iframe = container.querySelector('iframe');
+            const html = iframe.getAttribute('srcdoc');
+            const newWindow = window.open('', '_blank');
+            newWindow.document.write(html);
+            newWindow.document.close();
+        }
+    </script>
+{% endif %}

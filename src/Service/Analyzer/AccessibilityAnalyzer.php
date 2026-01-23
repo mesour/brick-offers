@@ -72,6 +72,11 @@ class AccessibilityAnalyzer extends AbstractBrowserAnalyzer
         return 80; // After visual
     }
 
+    public function getDescription(): string
+    {
+        return 'Testuje přístupnost podle WCAG pravidel (kontrast, alt texty, labels, atd.).';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

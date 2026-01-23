@@ -23,6 +23,11 @@ class DesignModernityAnalyzer extends AbstractBrowserAnalyzer
         return 65;
     }
 
+    public function getDescription(): string
+    {
+        return 'Hodnotí modernost designu: CSS Grid, Flexbox, proměnné, animace, efekty.';
+    }
+
     public function analyze(Lead $lead): AnalyzerResult
     {
         $url = $lead->getUrl();

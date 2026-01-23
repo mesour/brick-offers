@@ -195,7 +195,8 @@ class ReferenceDiscoverySource extends AbstractDiscoverySource
 
                 $truncatedUrl = $this->truncateUrl($clientData['url']);
 
-                $results[] = new DiscoveryResult($truncatedUrl, [
+                // Use parent's createResultWithExtraction for email/phone/company extraction
+                $results[] = $this->createResultWithExtraction($truncatedUrl, [
                     'source_type' => 'reference_crawler',
                     'inner_source' => $this->selectedInnerSource,
                     'agency_url' => $agency->url,

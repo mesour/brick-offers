@@ -102,6 +102,43 @@ bin/console app:user:set-limits admin \
 9. [ ] Vytvořit CLI příkazy pro správu uživatelů
 10. [ ] Vygenerovat a spustit migraci
 
+## Vylepšení (2026-01-22)
+
+### Kompletní tenant filtering
+Všechny CRUD controllery nyní správně filtrují data podle uživatele:
+
+**Přímý user vztah (AbstractTenantCrudController):**
+- Lead, DemandSignal, EmailBlacklist, EmailLog, EmailTemplate, IndustryBenchmark
+- MarketWatchFilter, MonitoredDomainSubscription, Offer, Proposal
+- UserAnalyzerConfig, UserCompanyNote, UserEmailTemplate
+
+**Nepřímý vztah (custom query v controlleru):**
+- Analysis → přes `lead.user`
+- AnalysisResult → přes `analysis.lead.user`
+- AnalysisSnapshot → přes `lead.user`
+- Company → přes `leads.user` (DISTINCT)
+- MonitoredDomain → přes `subscriptions.user`
+- CompetitorSnapshot → přes `monitoredDomain.subscriptions.user`
+
+### Automatické nastavení uživatele
+`AbstractTenantCrudController::persistEntity()` automaticky nastaví pole `user` na tenant owner při vytváření nové entity. Uživatel nemusí vybírat - pole je skryté.
+
+### Zjednodušené formuláře pro vytváření
+- **Lead** - pouze URL (ostatní se doplní z analýzy)
+- **Company** - pouze IČO (ostatní se doplní z ARES)
+
+### Read-only entity
+- **Proposal** - AI-generované, nelze vytvářet manuálně (pouze approve/reject)
+- **EmailTemplate** - systémové šablony, pouze pro čtení
+- **Analysis, AnalysisResult, AnalysisSnapshot** - pouze zobrazení
+
+### Přejmenování v menu
+- "Email Templates" → "Systémové šablony" (read-only)
+- "User Templates" → "Moje šablony" (editovatelné)
+
+### Nové soubory
+- `src/Security/Voter/PermissionVoter.php` - propojení EasyAdmin permissions s User::hasPermission()
+
 ## Známé problémy a řešení
 
 ### APP_SECRET prázdné
@@ -111,6 +148,14 @@ bin/console app:user:set-limits admin \
 ### PHPStan memory limit
 **Problém:** PHPStan přeteče paměť na velkých souborech
 **Řešení:** Použít `php -d memory_limit=512M ./vendor/bin/phpstan ...`
+
+### Další opravené bugy
+Viz `.ai/bugs/admin-multi-tenancy-fixes.md` pro detaily:
+- UUID toBinary() PostgreSQL encoding error
+- Chybějící PermissionVoter
+- Chybějící __toString() na entitách
+- Špatné názvy polí v CRUD controllerech
+- Nginx Unit port mismatch
 
 ## Verifikace
 
