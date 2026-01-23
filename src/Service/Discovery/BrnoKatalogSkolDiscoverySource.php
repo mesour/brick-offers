@@ -26,13 +26,22 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
 {
     private const URLS = [
+        'ms' => 'https://zapisdoms.brno.cz/materske-skoly',
+        'zs' => 'https://zapisdozs.brno.cz/zakladni-skoly',
+    ];
+
+    private const BASE_URLS = [
         'ms' => 'https://zapisdoms.brno.cz',
         'zs' => 'https://zapisdozs.brno.cz',
     ];
 
-    private const SCHOOL_TYPES = [
-        'ms' => 'Mateřská škola',
-        'zs' => 'Základní škola',
+    /**
+     * School type choices with labels for admin forms.
+     * Key = type code, Value = Czech label.
+     */
+    public const SCHOOL_TYPES = [
+        'ms' => 'Mateřské školy',
+        'zs' => 'Základní školy',
     ];
 
     private const MAX_RETRIES = 3;
@@ -76,6 +85,11 @@ class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
      */
     public function discoverWithSettings(array $settings, int $limit = 50): array
     {
+        $this->logger->info('BrnoKatalogSkol: discoverWithSettings called', [
+            'settings' => $settings,
+            'limit' => $limit,
+        ]);
+
         $schoolTypes = $settings['schoolTypes'] ?? ['zs'];
 
         if (empty($schoolTypes)) {
@@ -83,6 +97,10 @@ class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
 
             return [];
         }
+
+        $this->logger->info('BrnoKatalogSkol: Processing school types', [
+            'schoolTypes' => $schoolTypes,
+        ]);
 
         $results = [];
         $limitPerType = (int) ceil($limit / count($schoolTypes));
@@ -224,53 +242,31 @@ class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
     {
         $results = [];
 
-        // Try multiple patterns to find school links
-        $patterns = [
-            // Pattern 1: School detail links with href containing "skola" or "school"
-            '/<a[^>]+href="([^"]*(?:skola|school)[^"]*)"[^>]*>([^<]+)<\/a>/i',
-            // Pattern 2: Links to detail pages (typical pattern for school catalogs)
-            '/<a[^>]+href="(\/detail\/[^"]+)"[^>]*>([^<]+)<\/a>/i',
-            // Pattern 3: Links with class containing "school" or "skola"
-            '/<a[^>]+class="[^"]*(?:school|skola)[^"]*"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/i',
-            // Pattern 4: Generic internal links that might be school pages
-            '/<a[^>]+href="(\/[^"?]+)"[^>]*>([^<]{10,})<\/a>/i',
-        ];
+        // Pattern: Match only /skola/ detail page links (not /materske-skoly etc.)
+        $pattern = '/<a[^>]+href="(\/skola\/[^"]+)"[^>]*>([^<]+)<\/a>/i';
 
-        foreach ($patterns as $pattern) {
-            if (preg_match_all($pattern, $html, $matches, \PREG_SET_ORDER)) {
-                foreach ($matches as $match) {
-                    $href = $match[1];
-                    $schoolName = trim(html_entity_decode(strip_tags($match[2])));
+        if (preg_match_all($pattern, $html, $matches, \PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $href = $match[1];
+                $schoolName = trim(html_entity_decode(strip_tags($match[2])));
 
-                    // Skip empty names or navigation links
-                    if (empty($schoolName) || strlen($schoolName) < 5) {
-                        continue;
-                    }
-
-                    // Skip common navigation links
-                    if (preg_match('/^(home|domů|kontakt|o nás|mapa|hledat)/i', $schoolName)) {
-                        continue;
-                    }
-
-                    // Build full URL
-                    if (!str_starts_with($href, 'http')) {
-                        $baseUrl = self::URLS[$schoolType];
-                        $href = rtrim($baseUrl, '/') . '/' . ltrim($href, '/');
-                    }
-
-                    $results[] = new DiscoveryResult($href, [
-                        'business_name' => $schoolName,
-                        'school_type' => $schoolType,
-                        'school_type_label' => self::SCHOOL_TYPES[$schoolType] ?? $schoolType,
-                        'source_type' => 'brno_katalog_skol',
-                        'needs_website_extraction' => true,
-                    ]);
+                // Skip empty names
+                if (empty($schoolName) || strlen($schoolName) < 5) {
+                    continue;
                 }
 
-                // If we found results with this pattern, don't try others
-                if (!empty($results)) {
-                    break;
-                }
+                // Build full detail URL
+                $baseUrl = self::BASE_URLS[$schoolType];
+                $detailUrl = rtrim($baseUrl, '/') . $href;
+
+                // Return catalog detail URL - website will be extracted later in handler
+                $results[] = new DiscoveryResult($detailUrl, [
+                    'business_name' => $schoolName,
+                    'school_type' => $schoolType,
+                    'school_type_label' => self::SCHOOL_TYPES[$schoolType] ?? $schoolType,
+                    'source_type' => 'brno_katalog_skol',
+                    'needs_website_extraction' => true,
+                ]);
             }
         }
 
@@ -305,14 +301,12 @@ class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
             if ($html !== null) {
                 // Look for website link in contact section
                 $patterns = [
-                    // Pattern 1: "Web:" or "WWW:" label followed by link
-                    '/(?:Web|WWW):\s*<\/?\w*[^>]*>\s*<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>/i',
-                    // Pattern 2: Link with explicit domain text
-                    '/<a[^>]+href="(https?:\/\/(?!(?:zapisdoms|zapisdozs)\.brno\.cz)[^"]+)"[^>]*>'
-                    . '\s*(?:www\.|http)[^<]*<\/a>/i',
-                    // Pattern 3: External .cz link
-                    '/<a[^>]+href="(https?:\/\/(?!(?:zapisdoms|zapisdozs)\.brno\.cz)[^"]+\.cz[^"]*)"'
-                    . '[^>]*target="_blank"[^>]*>/i',
+                    // Pattern 1: Link inside field-school-www div (most reliable for Brno catalog)
+                    '/field-school-www.*?href="(https?:[^"]+)"/s',
+                    // Pattern 2: Link with http(s):// visible text (school website shown as text)
+                    '/<a[^>]+href="(https?:\/\/(?!(?:zapisdoms|zapisdozs|zapisdoskol)[^"]*)[^"]+)"[^>]*>\s*https?:\/\/[^<]+<\/a>/i',
+                    // Pattern 3: Any external .cz link not to catalog
+                    '/<a[^>]+href="(https?:\/\/(?!(?:zapisdoms|zapisdozs|zapisdoskol|brno\.cz)[^"]*)[^"]+\.cz[^"]*)"[^>]*>/i',
                 ];
 
                 foreach ($patterns as $pattern) {
@@ -329,6 +323,10 @@ class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
                         }
                     }
                 }
+
+                $this->logger->debug('BrnoKatalogSkol: No website found on detail page', [
+                    'detailUrl' => $detailUrl,
+                ]);
 
                 return null;
             }
@@ -349,15 +347,21 @@ class BrnoKatalogSkolDiscoverySource extends AbstractDiscoverySource
         }
 
         $parsed = parse_url($url);
-        $host = $parsed['host'] ?? '';
+        $host = strtolower($parsed['host'] ?? '');
 
-        // Skip Brno catalog URLs
-        if (
-            str_ends_with($host, 'zapisdoms.brno.cz')
-            || str_ends_with($host, 'zapisdozs.brno.cz')
-            || str_ends_with($host, 'brno.cz')
-        ) {
-            return false;
+        // Skip catalog and related URLs
+        $skipDomains = [
+            'zapisdoms.brno.cz',
+            'zapisdozs.brno.cz',
+            'brno.cz',
+            'zapisdoskol.cz',
+            'www.zapisdoskol.cz',
+        ];
+
+        foreach ($skipDomains as $skipDomain) {
+            if ($host === $skipDomain || str_ends_with($host, '.' . $skipDomain)) {
+                return false;
+            }
         }
 
         return true;

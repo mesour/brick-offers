@@ -35,6 +35,9 @@
             const queryFields = document.querySelectorAll('.query-based-field');
             const atlasFields = document.querySelectorAll('.atlas-skolstvi-field');
             const seznamSkolFields = document.querySelectorAll('.seznam-skol-field');
+            const seznamSkolEuFields = document.querySelectorAll('.seznam-skol-eu-field');
+            const jmkFields = document.querySelectorAll('.jmk-katalog-skol-field');
+            const brnoFields = document.querySelectorAll('.brno-katalog-skol-field');
 
             // Show/hide query-based fields
             queryFields.forEach(function(field) {
@@ -49,6 +52,21 @@
             // Show/hide Seznam Škol fields
             seznamSkolFields.forEach(function(field) {
                 field.style.display = (selectedSource === 'seznam_skol') ? '' : 'none';
+            });
+
+            // Show/hide Seznam Škol EU fields
+            seznamSkolEuFields.forEach(function(field) {
+                field.style.display = (selectedSource === 'seznam_skol_eu') ? '' : 'none';
+            });
+
+            // Show/hide JMK Katalog Škol fields
+            jmkFields.forEach(function(field) {
+                field.style.display = (selectedSource === 'jmk_katalog_skol') ? '' : 'none';
+            });
+
+            // Show/hide Brno Katalog Škol fields
+            brnoFields.forEach(function(field) {
+                field.style.display = (selectedSource === 'brno_katalog_skol') ? '' : 'none';
             });
         }
 

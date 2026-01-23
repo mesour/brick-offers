@@ -13,6 +13,7 @@ enum DemandSignalSource: string
     case POPTAVKY_CZ = 'poptavky_cz';
     case AAAPOPTAVKA = 'aaapoptavka';
     case POPTAVEJ = 'poptavej';
+    case WEBTRH = 'webtrh';
 
     // Public tenders
     case NEN = 'nen';
@@ -35,6 +36,7 @@ enum DemandSignalSource: string
             self::POPTAVKY_CZ => 'Poptavky.cz',
             self::AAAPOPTAVKA => 'AAAPoptávka.cz',
             self::POPTAVEJ => 'Poptavej.cz',
+            self::WEBTRH => 'WebTrh.cz',
             self::NEN => 'Věstník veřejných zakázek (NEN)',
             self::EZAKAZKY => 'E-zakázky.cz',
             self::ROZZA => 'ROZZA portál',
@@ -46,6 +48,7 @@ enum DemandSignalSource: string
             self::MANUAL => 'Manuální',
         };
     }
+
 
     public function isJobPortal(): bool
     {
@@ -59,6 +62,6 @@ enum DemandSignalSource: string
 
     public function isRfpPlatform(): bool
     {
-        return in_array($this, [self::POPTAVKY_CZ, self::AAAPOPTAVKA, self::POPTAVEJ], true);
+        return in_array($this, [self::POPTAVKY_CZ, self::AAAPOPTAVKA, self::POPTAVEJ, self::WEBTRH], true);
     }
 }

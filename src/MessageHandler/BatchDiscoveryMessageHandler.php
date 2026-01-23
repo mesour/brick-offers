@@ -127,7 +127,7 @@ final class BatchDiscoveryMessageHandler
                     extractData: $profile->isExtractData(),
                     linkCompany: $profile->isLinkCompany(),
                     profileId: $profileId,
-                    industryFilter: $profile->getIndustry()?->value,
+                    industryFilter: $user->getIndustry()?->value,
                     autoAnalyze: $profile->isAutoAnalyze(),
                     sourceSettings: $profile->getSourceSettings(),
                 ));

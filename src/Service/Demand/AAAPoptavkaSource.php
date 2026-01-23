@@ -162,7 +162,8 @@ class AAAPoptavkaSource extends AbstractDemandSource
                 continue;
             }
 
-            $title = trim($link->textContent);
+            // Extract title from heading element inside the link (h3, h4, or first text node)
+            $title = $this->extractTitleFromLink($xpath, $link);
 
             // Skip navigation links (usually short)
             if (empty($title) || mb_strlen($title) < 15) {
@@ -172,6 +173,11 @@ class AAAPoptavkaSource extends AbstractDemandSource
             // Clean title - remove "Poptávka: " prefix if present
             $title = preg_replace('/^poptávk[ay]:?\s*/iu', '', $title);
             $title = preg_replace('/^poptávám:?\s*/iu', '', $title);
+
+            // Truncate if still too long (DB limit is 500)
+            if (mb_strlen($title) > 450) {
+                $title = mb_substr($title, 0, 447) . '...';
+            }
 
             $seenIds[$externalId] = true;
 
@@ -230,13 +236,19 @@ class AAAPoptavkaSource extends AbstractDemandSource
                 continue;
             }
 
-            $title = trim($linkNode->textContent);
+            // Extract title from heading element inside the link
+            $title = $this->extractTitleFromLink($xpath, $linkNode);
             if (empty($title) || mb_strlen($title) < 15) {
                 continue;
             }
 
             $title = preg_replace('/^poptávk[ay]:?\s*/iu', '', $title);
             $title = preg_replace('/^poptávám:?\s*/iu', '', $title);
+
+            // Truncate if still too long (DB limit is 500)
+            if (mb_strlen($title) > 450) {
+                $title = mb_substr($title, 0, 447) . '...';
+            }
 
             $seenIds[$externalId] = true;
 
@@ -320,6 +332,37 @@ class AAAPoptavkaSource extends AbstractDemandSource
         }
 
         return null;
+    }
+
+    /**
+     * Extract title from heading element inside a link.
+     * AAAPoptavka.cz has nested elements inside <a> tags, we only want the heading text.
+     */
+    private function extractTitleFromLink(\DOMXPath $xpath, \DOMElement $link): string
+    {
+        // Try to find h3, h4, or h5 heading inside the link
+        $headingNode = $xpath->query(".//h3 | .//h4 | .//h5", $link)->item(0);
+        if ($headingNode !== null) {
+            return trim($headingNode->textContent);
+        }
+
+        // Try to find element with title/name class
+        $titleNode = $xpath->query(".//*[contains(@class, 'title')] | .//*[contains(@class, 'name')]", $link)->item(0);
+        if ($titleNode !== null) {
+            return trim($titleNode->textContent);
+        }
+
+        // Fallback: get only first line of text content
+        $fullText = trim($link->textContent);
+        $lines = preg_split('/[\r\n]+/', $fullText);
+        $firstLine = trim($lines[0] ?? '');
+
+        // If first line is too long, it might still have junk - truncate at reasonable length
+        if (mb_strlen($firstLine) > 200) {
+            $firstLine = mb_substr($firstLine, 0, 197) . '...';
+        }
+
+        return $firstLine;
     }
 
     private function extractValueFromItem(\DOMXPath $xpath, \DOMElement $item): ?float

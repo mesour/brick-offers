@@ -30,4 +30,5 @@ enum DemandSignalStatus: string
     {
         return in_array($this, [self::NEW, self::QUALIFIED], true);
     }
+
 }

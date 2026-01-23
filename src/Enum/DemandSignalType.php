@@ -92,4 +92,5 @@ enum DemandSignalType: string
             self::ADDRESS_CHANGE,
         ], true);
     }
+
 }

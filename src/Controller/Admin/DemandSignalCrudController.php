@@ -8,6 +8,9 @@ use App\Entity\DemandSignal;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use App\Enum\DemandSignalSource;
+use App\Enum\DemandSignalType;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
@@ -46,11 +49,21 @@ class DemandSignalCrudController extends AbstractTenantCrudController
         yield TextField::new('title')
             ->setLabel('Titulek');
 
-        yield TextField::new('source')
-            ->setLabel('Zdroj');
+        yield ChoiceField::new('source')
+            ->setLabel('Zdroj')
+            ->setChoices(array_combine(
+                array_map(fn ($s) => $s->getLabel(), DemandSignalSource::cases()),
+                DemandSignalSource::cases()
+            ))
+            ->formatValue(fn ($value) => $value instanceof DemandSignalSource ? $value->getLabel() : $value);
 
-        yield TextField::new('signalType')
-            ->setLabel('Typ signálu');
+        yield ChoiceField::new('signalType')
+            ->setLabel('Typ signálu')
+            ->setChoices(array_combine(
+                array_map(fn ($t) => $t->getLabel(), DemandSignalType::cases()),
+                DemandSignalType::cases()
+            ))
+            ->formatValue(fn ($value) => $value instanceof DemandSignalType ? $value->getLabel() : $value);
 
         yield UrlField::new('sourceUrl')
             ->setLabel('URL zdroje')

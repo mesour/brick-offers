@@ -86,4 +86,5 @@ enum Industry: string
 
         return $choices;
     }
+
 }

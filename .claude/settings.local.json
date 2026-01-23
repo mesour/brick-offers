@@ -100,7 +100,13 @@
       "Bash(for cat in informacni-technologie reklama-a-tisk potravinarske elektro energetika hobby nabytek ostatni)",
       "Bash(for cat in potravinarstvi potraviny gastronomie jidlo)",
       "WebFetch(domain:www.seznamskol.cz)",
-      "WebFetch(domain:www.startupjobs.cz)"
+      "WebFetch(domain:www.startupjobs.cz)",
+      "WebFetch(domain:webtrh.cz)",
+      "WebFetch(domain:www.skoly-online.cz)",
+      "WebFetch(domain:skoly.jmk.cz)",
+      "WebFetch(domain:zapisdoms.brno.cz)",
+      "Bash(vendor/bin/phpcs:*)",
+      "Bash(vendor/bin/phpcbf:*)"
     ],
     "deny": [],
     "ask": []

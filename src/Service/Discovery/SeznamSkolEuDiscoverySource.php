@@ -36,7 +36,11 @@ class SeznamSkolEuDiscoverySource extends AbstractDiscoverySource
     private const RESULTS_PER_PAGE = 20;
     private const MAX_RETRIES = 3;
 
-    private const SCHOOL_TYPES = [
+    /**
+     * School type choices with labels for admin forms.
+     * Key = URL slug, Value = Czech label.
+     */
+    public const SCHOOL_TYPES = [
         'materska-skola' => 'Mateřská škola',
         'zakladni-skola' => 'Základní škola',
         'stredni-skola' => 'Střední škola',
@@ -45,7 +49,11 @@ class SeznamSkolEuDiscoverySource extends AbstractDiscoverySource
         'umelecka-skola' => 'Umělecká škola',
     ];
 
-    private const REGIONS = [
+    /**
+     * Region choices with labels for admin forms.
+     * Key = URL param, Value = Czech label.
+     */
+    public const REGIONS = [
         'praha' => 'Praha',
         'stredocesky' => 'Středočeský kraj',
         'jihocesky' => 'Jihočeský kraj',

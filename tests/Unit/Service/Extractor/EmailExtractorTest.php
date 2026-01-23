@@ -105,6 +105,31 @@ final class EmailExtractorTest extends TestCase
         self::assertContains('info@company.cz', $result);
     }
 
+    #[Test]
+    public function extract_htmlEntityEncodedEmail_decodesCorrectly(): void
+    {
+        $html = '<a href="mailto:info&#64;company.cz">info&#64;company.cz</a>';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('info@company.cz', $result);
+    }
+
+    #[Test]
+    public function extract_multipleHtmlEntities_decodesAll(): void
+    {
+        // Pattern from brno-stred.cz
+        $html = '
+            <td><a href="mailto:olga.plchova&#64;brno-stred.cz">olga.plchova&#64;brno-stred.cz</a></td>
+            <td><a href="mailto:podatelna.stred&#64;brno.cz">podatelna.stred&#64;brno.cz</a></td>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('olga.plchova@brno-stred.cz', $result);
+        self::assertContains('podatelna.stred@brno.cz', $result);
+    }
+
     // ==================== Case Sensitivity Tests ====================
 
     #[Test]
@@ -517,6 +542,75 @@ final class EmailExtractorTest extends TestCase
         self::assertCount(2, $result);
         self::assertContains('info@company.cz', $result);
         self::assertContains('podpora@company.cz', $result);
+    }
+
+    // ==================== Obfuscated Email Tests ====================
+
+    #[Test]
+    public function extract_obfuscatedDataMailAndDomain_extractsEmail(): void
+    {
+        // Pattern used by brno.cz and similar sites
+        $html = '<a href="mailto:" data-mail="info" data-domain="example.cz" data-replace-text="true"></a>';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('info@example.cz', $result);
+    }
+
+    #[Test]
+    public function extract_obfuscatedReversedOrder_extractsEmail(): void
+    {
+        // Same pattern but with reversed attribute order
+        $html = '<a href="mailto:" data-domain="company.cz" data-mail="kontakt"></a>';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('kontakt@company.cz', $result);
+    }
+
+    #[Test]
+    public function extract_multipleObfuscatedEmails_extractsAll(): void
+    {
+        $html = '
+            <a href="mailto:" data-mail="posta" data-domain="brno.cz"></a>
+            <a href="mailto:" data-mail="informace" data-domain="brno.cz"></a>
+            <a href="mailto:" data-mail="tis" data-domain="brno.cz"></a>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertCount(3, $result);
+        self::assertContains('posta@brno.cz', $result);
+        self::assertContains('informace@brno.cz', $result);
+        self::assertContains('tis@brno.cz', $result);
+    }
+
+    #[Test]
+    public function extract_mixedObfuscatedAndRegularEmails_extractsAll(): void
+    {
+        $html = '
+            <a href="mailto:regular@company.cz">Regular email</a>
+            <a href="mailto:" data-mail="obfuscated" data-domain="company.cz"></a>
+            <p>Contact us at text@company.cz</p>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertCount(3, $result);
+        self::assertContains('regular@company.cz', $result);
+        self::assertContains('obfuscated@company.cz', $result);
+        self::assertContains('text@company.cz', $result);
+    }
+
+    #[Test]
+    public function extract_obfuscatedWithExtraAttributes_extractsEmail(): void
+    {
+        // Real-world example with extra attributes
+        $html = '<a href="mailto:" class="email-link" data-mail="info" data-domain="firma.cz" data-replace-text="true" target="_blank"></a>';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('info@firma.cz', $result);
     }
 
     // ==================== Edge Cases ====================

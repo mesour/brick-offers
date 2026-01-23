@@ -39,6 +39,39 @@ class AtlasSkolstviDiscoverySource extends AbstractDiscoverySource
         'jazykove-skoly' => 'js',
     ];
 
+    /**
+     * School type choices with labels for admin forms.
+     * Key = URL slug, Value = Czech label.
+     */
+    public const SCHOOL_TYPES = [
+        'zakladni-skoly' => 'Základní školy',
+        'stredni-skoly' => 'Střední školy',
+        'vysoke-skoly' => 'Vysoké školy',
+        'vyssi-odborne-skoly' => 'Vyšší odborné školy',
+        'jazykove-skoly' => 'Jazykové školy',
+    ];
+
+    /**
+     * Region choices with labels for admin forms.
+     * Key = URL slug (matching atlasskolstvi.cz URL params), Value = Czech label.
+     */
+    public const REGIONS = [
+        'hlm-praha' => 'Hl.m. Praha',
+        'stredocesky-kraj' => 'Středočeský kraj',
+        'jihocesky-kraj' => 'Jihočeský kraj',
+        'plzensky-kraj' => 'Plzeňský kraj',
+        'karlovarsky-kraj' => 'Karlovarský kraj',
+        'ustecky-kraj' => 'Ústecký kraj',
+        'liberecky-kraj' => 'Liberecký kraj',
+        'kralovehradecky-kraj' => 'Královéhradecký kraj',
+        'pardubicky-kraj' => 'Pardubický kraj',
+        'kraj-vysocina' => 'Kraj Vysočina',
+        'jihomoravsky-kraj' => 'Jihomoravský kraj',
+        'olomoucky-kraj' => 'Olomoucký kraj',
+        'zlinsky-kraj' => 'Zlínský kraj',
+        'moravskoslezsky-kraj' => 'Moravskoslezský kraj',
+    ];
+
     public function __construct(
         HttpClientInterface $httpClient,
         LoggerInterface $logger,

@@ -214,7 +214,7 @@ class DiscoveryBatchCommand extends Command
                             ['Sources', implode(', ', $profile->getDiscoverySources()) ?: '<none>'],
                             ['Queries', count($profile->getDiscoveryQueries()) > 0 ? implode(', ', array_slice($profile->getDiscoveryQueries(), 0, 3)) . (count($profile->getDiscoveryQueries()) > 3 ? '...' : '') : '<none>'],
                             ['Limit', $profile->getDiscoveryLimit()],
-                            ['Industry', $profile->getIndustry()?->value ?? '<none>'],
+                            ['Industry', $user->getIndustry()?->value ?? '<none>'],
                             ['Auto-analyze', $profile->isAutoAnalyze() ? 'Yes' : 'No'],
                         ]);
                     }

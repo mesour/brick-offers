@@ -20,9 +20,7 @@ use App\Service\Discovery\AbstractDiscoverySource;
 use App\Service\Discovery\DiscoveryResult;
 use App\Service\Discovery\DiscoverySourceInterface;
 use App\Service\Discovery\DomainMatcher;
-use App\Service\Discovery\AtlasSkolstviDiscoverySource;
 use App\Service\Discovery\ReferenceDiscoverySource;
-use App\Service\Discovery\SeznamSkolDiscoverySource;
 use App\Service\Extractor\PageDataExtractor;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -113,12 +111,10 @@ final class DiscoverLeadsMessageHandler
             $discoverySource->setExtractionEnabled(true);
         }
 
-        // Parse industry filter
+        // Parse industry filter - always use user's industry
         $industry = null;
         if ($message->industryFilter !== null) {
             $industry = Industry::tryFrom($message->industryFilter);
-        } elseif ($profile !== null) {
-            $industry = $profile->getIndustry();
         } elseif ($user->hasIndustry()) {
             $industry = $user->getIndustry();
         }
@@ -162,14 +158,23 @@ final class DiscoverLeadsMessageHandler
         $seenDomains = [];
 
         // Discover and process leads progressively
-        if ($source->isCategoryBased() && ($discoverySource instanceof AtlasSkolstviDiscoverySource || $discoverySource instanceof SeznamSkolDiscoverySource)) {
+        if ($source->isCategoryBased() && method_exists($discoverySource, 'discoverWithSettings')) {
             // Category-based sources - get all results first (no extraction during discovery)
+            $this->logger->info('Calling discoverWithSettings', [
+                'source' => $source->value,
+                'sourceSettings' => $message->sourceSettings,
+                'limit' => $message->limit,
+            ]);
             $results = $discoverySource->discoverWithSettings($message->sourceSettings, $message->limit);
+            $this->logger->info('discoverWithSettings returned', [
+                'results_count' => count($results),
+            ]);
             foreach ($results as $result) {
                 $this->processDiscoveryResult(
                     $result, $user, $source, $profile, $industry, $affiliate, $message,
                     $excludedPatterns, $seenDomains,
-                    $savedCount, $skippedExisting, $skippedExcluded, $linkedCount, $analyzedCount
+                    $savedCount, $skippedExisting, $skippedExcluded, $linkedCount, $analyzedCount,
+                    $discoverySource
                 );
 
                 if ($savedCount >= $message->limit) {
@@ -197,7 +202,8 @@ final class DiscoverLeadsMessageHandler
                     $this->processDiscoveryResult(
                         $result, $user, $source, $profile, $industry, $affiliate, $message,
                         $excludedPatterns, $seenDomains,
-                        $savedCount, $skippedExisting, $skippedExcluded, $linkedCount, $analyzedCount
+                        $savedCount, $skippedExisting, $skippedExcluded, $linkedCount, $analyzedCount,
+                        $discoverySource
                     );
 
                     if ($savedCount >= $message->limit) {
@@ -238,17 +244,23 @@ final class DiscoverLeadsMessageHandler
         int &$skippedExcluded,
         int &$linkedCount,
         int &$analyzedCount,
+        ?DiscoverySourceInterface $discoverySource = null,
     ): void {
         $domain = $result->domain;
+        $needsWebsiteExtraction = $result->metadata['needs_website_extraction'] ?? false;
+
+        // For catalog results that need website extraction, use URL as unique key instead of domain
+        // (all catalog results have the same catalog domain)
+        $uniqueKey = $needsWebsiteExtraction ? $result->url : $domain;
 
         // Skip if already seen in this batch
-        if (isset($seenDomains[$domain])) {
+        if (isset($seenDomains[$uniqueKey])) {
             return;
         }
-        $seenDomains[$domain] = true;
+        $seenDomains[$uniqueKey] = true;
 
-        // Check if domain is excluded
-        if (!empty($excludedPatterns) && $this->domainMatcher->isExcluded($domain, $excludedPatterns)) {
+        // Check if domain is excluded (skip for catalog results that need website extraction)
+        if (!$needsWebsiteExtraction && !empty($excludedPatterns) && $this->domainMatcher->isExcluded($domain, $excludedPatterns)) {
             $skippedExcluded++;
             $this->logger->debug('Skipped excluded domain', ['domain' => $domain]);
 
@@ -256,23 +268,66 @@ final class DiscoverLeadsMessageHandler
         }
 
         // Check if lead already exists for this user
-        $existingLead = $this->leadRepository->findOneBy([
-            'user' => $user,
-            'domain' => $domain,
-        ]);
+        // For catalog results, check by URL since domain is the catalog domain
+        if ($needsWebsiteExtraction) {
+            $existingLead = $this->leadRepository->findOneBy([
+                'user' => $user,
+                'url' => $result->url,
+            ]);
+        } else {
+            $existingLead = $this->leadRepository->findOneBy([
+                'user' => $user,
+                'domain' => $domain,
+            ]);
+        }
 
         if ($existingLead !== null) {
             $skippedExisting++;
-            $this->logger->debug('Lead already exists', ['domain' => $domain]);
+            $this->logger->debug('Lead already exists', ['domain' => $domain, 'url' => $result->url]);
 
             return;
+        }
+
+        // For catalog results, extract actual website URL from detail page
+        $leadUrl = $result->url;
+        $catalogUrl = null;
+        if ($needsWebsiteExtraction && $discoverySource instanceof AbstractDiscoverySource) {
+            $catalogUrl = $result->url;
+            $extractedUrl = null;
+
+            // Try to extract website from catalog detail page
+            if (method_exists($discoverySource, 'extractWebsiteFromDetailPage')) {
+                $extractedUrl = $discoverySource->extractWebsiteFromDetailPage($catalogUrl);
+            }
+
+            if ($extractedUrl !== null) {
+                $leadUrl = $extractedUrl;
+                $domain = $this->extractDomain($extractedUrl);
+
+                // Check again if lead with this domain already exists
+                $existingLead = $this->leadRepository->findOneBy([
+                    'user' => $user,
+                    'domain' => $domain,
+                ]);
+                if ($existingLead !== null) {
+                    $skippedExisting++;
+                    $this->logger->debug('Lead already exists (after website extraction)', ['domain' => $domain]);
+
+                    return;
+                }
+            } else {
+                // No website found - skip this result
+                $this->logger->debug('No website found for catalog result, skipping', ['catalog_url' => $catalogUrl]);
+
+                return;
+            }
         }
 
         // Create lead entity
         $lead = new Lead();
         $lead->setUser($user);
         $lead->setDomain($domain);
-        $lead->setUrl($result->url);
+        $lead->setUrl($leadUrl);
         $lead->setSource($source);
         $lead->setStatus(LeadStatus::NEW);
 
@@ -290,6 +345,10 @@ final class DiscoverLeadsMessageHandler
 
         // Store discovery metadata
         $metadata = $result->metadata;
+        if ($catalogUrl !== null) {
+            $metadata['catalog_url'] = $catalogUrl;
+            unset($metadata['needs_website_extraction']);
+        }
         $lead->setMetadata($metadata);
 
         // Set basic fields from discovery result
@@ -298,9 +357,10 @@ final class DiscoverLeadsMessageHandler
         }
 
         // Extract data from website if enabled
+        // Uses extractWithContactPages to also crawl /kontakt, /contact pages for emails
         if ($message->extractData) {
             try {
-                $pageData = $this->pageDataExtractor->extractFromUrl($result->url);
+                $pageData = $this->pageDataExtractor->extractWithContactPages($leadUrl);
                 if ($pageData !== null) {
                     $extractedMetadata = $pageData->toMetadata();
                     $metadata = array_merge($metadata, $extractedMetadata);
@@ -388,5 +448,21 @@ final class DiscoverLeadsMessageHandler
         if (!empty($metadata['social_media'])) {
             $lead->setSocialMedia($metadata['social_media']);
         }
+    }
+
+    /**
+     * Extract domain from URL.
+     */
+    private function extractDomain(string $url): string
+    {
+        $parsed = parse_url($url);
+        $host = $parsed['host'] ?? $url;
+
+        // Remove www. prefix
+        if (str_starts_with($host, 'www.')) {
+            $host = substr($host, 4);
+        }
+
+        return strtolower($host);
     }
 }

@@ -308,7 +308,8 @@ class LeadsExtractDataCommand extends Command
         }
 
         try {
-            $pageData = $this->extractor->extractFromUrl($url);
+            // Use extractWithContactPages to also crawl /kontakt, /contact pages for emails
+            $pageData = $this->extractor->extractWithContactPages($url);
 
             if ($pageData === null) {
                 $result['error'] = 'Failed to fetch URL';

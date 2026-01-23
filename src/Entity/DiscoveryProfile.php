@@ -12,7 +12,6 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
-use App\Enum\Industry;
 use App\Repository\DiscoveryProfileRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -48,7 +47,6 @@ use Symfony\Component\Validator\Constraints as Assert;
 )]
 #[ApiFilter(SearchFilter::class, properties: [
     'name' => 'partial',
-    'industry' => 'exact',
     'isDefault' => 'exact',
 ])]
 class DiscoveryProfile
@@ -70,9 +68,6 @@ class DiscoveryProfile
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
-
-    #[ORM\Column(type: Types::STRING, length: 50, nullable: true, enumType: Industry::class)]
-    private ?Industry $industry = null;
 
     #[ORM\Column(options: ['default' => false])]
     private bool $isDefault = false;
@@ -194,18 +189,6 @@ class DiscoveryProfile
     public function setDescription(?string $description): static
     {
         $this->description = $description;
-
-        return $this;
-    }
-
-    public function getIndustry(): ?Industry
-    {
-        return $this->industry;
-    }
-
-    public function setIndustry(?Industry $industry): static
-    {
-        $this->industry = $industry;
 
         return $this;
     }
@@ -428,6 +411,28 @@ class DiscoveryProfile
         return $this;
     }
 
+    /**
+     * Get school districts for JMK Katalog.
+     *
+     * @return array<string>
+     */
+    public function getSchoolDistricts(): array
+    {
+        return $this->sourceSettings['districts'] ?? [];
+    }
+
+    /**
+     * Set school districts for JMK Katalog.
+     *
+     * @param array<string>|null $districts
+     */
+    public function setSchoolDistricts(?array $districts): static
+    {
+        $this->sourceSettings['districts'] = $districts ?? [];
+
+        return $this;
+    }
+
     public function getDiscoveryLimit(): int
     {
         return $this->discoveryLimit;
@@ -615,11 +620,6 @@ class DiscoveryProfile
     {
         $this->createdAt = new \DateTimeImmutable();
         $this->updatedAt = new \DateTimeImmutable();
-
-        // Inherit industry from user if not set
-        if ($this->industry === null && $this->user !== null) {
-            $this->industry = $this->user->getIndustry();
-        }
     }
 
     #[ORM\PreUpdate]

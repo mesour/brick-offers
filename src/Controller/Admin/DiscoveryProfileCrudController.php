@@ -11,6 +11,10 @@ use App\Enum\Industry;
 use App\Enum\LeadSource;
 use App\Repository\DiscoveryProfileRepository;
 use App\Service\AnalyzerConfigService;
+use App\Service\Discovery\AtlasSkolstviDiscoverySource;
+use App\Service\Discovery\JmkKatalogSkolDiscoverySource;
+use App\Service\Discovery\BrnoKatalogSkolDiscoverySource;
+use App\Service\Discovery\SeznamSkolEuDiscoverySource;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
@@ -27,7 +31,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\BooleanFilter;
-use EasyCorp\Bundle\EasyAdminBundle\Filter\ChoiceFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
@@ -38,7 +41,8 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
         private readonly EntityManagerInterface $em,
         private readonly AdminUrlGenerator $adminUrlGenerator,
         private readonly AnalyzerConfigService $analyzerConfigService,
-    ) {}
+    ) {
+    }
 
     public static function getEntityFqcn(): string
     {
@@ -82,11 +86,7 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
         return $filters
             ->add(BooleanFilter::new('isDefault'))
             ->add(BooleanFilter::new('discoveryEnabled'))
-            ->add(BooleanFilter::new('autoAnalyze'))
-            ->add(ChoiceFilter::new('industry')->setChoices(array_combine(
-                array_map(fn ($i) => $i->getLabel(), Industry::cases()),
-                Industry::cases()
-            )));
+            ->add(BooleanFilter::new('autoAnalyze'));
     }
 
     public function configureFields(string $pageName): iterable
@@ -109,15 +109,6 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ->setLabel('Popis')
             ->setRequired(false)
             ->hideOnIndex();
-
-        yield ChoiceField::new('industry')
-            ->setLabel('Odvětví')
-            ->setChoices(array_combine(
-                array_map(fn ($i) => $i->getLabel(), Industry::cases()),
-                Industry::cases()
-            ))
-            ->setRequired(false)
-            ->setHelp('Určuje které industry-specific analyzery se použijí');
 
         yield BooleanField::new('isDefault')
             ->setLabel('Výchozí profil')
@@ -145,15 +136,10 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ->setFormTypeOption('row_attr', ['class' => 'source-field query-based-field']);
 
         // Atlas Školství: school types (multi-select)
-        yield ChoiceField::new('schoolTypes')
+        yield ChoiceField::new('atlasSchoolTypes')
             ->setLabel('Typy škol')
-            ->setChoices([
-                'Základní školy' => 'zakladni-skoly',
-                'Střední školy' => 'stredni-skoly',
-                'Vysoké školy' => 'vysoke-skoly',
-                'Vyšší odborné školy' => 'vyssi-odborne-skoly',
-                'Jazykové školy' => 'jazykove-skoly',
-            ])
+            ->setFormTypeOption('property_path', 'schoolTypes')
+            ->setChoices(array_flip(AtlasSkolstviDiscoverySource::SCHOOL_TYPES))
             ->allowMultipleChoices()
             ->setRequired(false)
             ->setHelp('Vyberte typy škol pro Atlas Školství')
@@ -161,24 +147,10 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ->setFormTypeOption('row_attr', ['class' => 'source-field atlas-skolstvi-field']);
 
         // Atlas Školství: regions (multi-select, optional)
-        yield ChoiceField::new('schoolRegions')
+        yield ChoiceField::new('atlasSchoolRegions')
             ->setLabel('Kraje')
-            ->setChoices([
-                'Praha' => 'praha',
-                'Středočeský' => 'stredocesky',
-                'Jihočeský' => 'jihocesky',
-                'Plzeňský' => 'plzensky',
-                'Karlovarský' => 'karlovarsky',
-                'Ústecký' => 'ustecky',
-                'Liberecký' => 'liberecky',
-                'Královéhradecký' => 'kralovehradecky',
-                'Pardubický' => 'pardubicky',
-                'Vysočina' => 'vysocina',
-                'Jihomoravský' => 'jihomoravsky',
-                'Olomoucký' => 'olomoucky',
-                'Zlínský' => 'zlinsky',
-                'Moravskoslezský' => 'moravskoslezsky',
-            ])
+            ->setFormTypeOption('property_path', 'schoolRegions')
+            ->setChoices(array_flip(AtlasSkolstviDiscoverySource::REGIONS))
             ->allowMultipleChoices()
             ->setRequired(false)
             ->setHelp('Volitelně omezit na vybrané kraje (Atlas Školství)')
@@ -186,7 +158,7 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ->setFormTypeOption('row_attr', ['class' => 'source-field atlas-skolstvi-field']);
 
         // Seznam Škol: school types (multi-select) - uses same sourceSettings keys
-        yield ChoiceField::new('schoolTypes')
+        yield ChoiceField::new('seznamSchoolTypes')
             ->setLabel('Typy škol')
             ->setFormTypeOption('property_path', 'schoolTypes')
             ->setChoices([
@@ -201,7 +173,7 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ->setFormTypeOption('row_attr', ['class' => 'source-field seznam-skol-field']);
 
         // Seznam Škol: regions (multi-select, optional)
-        yield ChoiceField::new('schoolRegions')
+        yield ChoiceField::new('seznamSchoolRegions')
             ->setLabel('Kraje')
             ->setFormTypeOption('property_path', 'schoolRegions')
             ->setChoices([
@@ -226,6 +198,61 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ->onlyOnForms()
             ->setFormTypeOption('row_attr', ['class' => 'source-field seznam-skol-field']);
 
+        // Seznam Škol EU: school types (multi-select)
+        yield ChoiceField::new('seznamEuSchoolTypes')
+            ->setLabel('Typy škol')
+            ->setFormTypeOption('property_path', 'schoolTypes')
+            ->setChoices(array_flip(SeznamSkolEuDiscoverySource::SCHOOL_TYPES))
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Vyberte typy škol pro Seznam Škol EU')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field seznam-skol-eu-field']);
+
+        // Seznam Škol EU: regions (multi-select, optional)
+        yield ChoiceField::new('seznamEuSchoolRegions')
+            ->setLabel('Kraje')
+            ->setFormTypeOption('property_path', 'schoolRegions')
+            ->setChoices(array_flip(SeznamSkolEuDiscoverySource::REGIONS))
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Volitelně omezit na vybrané kraje (Seznam Škol EU)')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field seznam-skol-eu-field']);
+
+        // JMK Katalog Škol: school types (multi-select)
+        yield ChoiceField::new('jmkSchoolTypes')
+            ->setLabel('Typy škol')
+            ->setFormTypeOption('property_path', 'schoolTypes')
+            ->setChoices(array_flip(JmkKatalogSkolDiscoverySource::SCHOOL_TYPES))
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Vyberte typy škol pro JMK Katalog')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field jmk-katalog-skol-field']);
+
+        // JMK Katalog Škol: districts (multi-select, optional)
+        yield ChoiceField::new('jmkDistricts')
+            ->setLabel('Okresy')
+            ->setFormTypeOption('property_path', 'schoolDistricts')
+            ->setChoices(array_flip(JmkKatalogSkolDiscoverySource::DISTRICTS))
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Volitelně omezit na vybrané okresy (JMK Katalog)')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field jmk-katalog-skol-field']);
+
+        // Brno Katalog Škol: school types (multi-select)
+        yield ChoiceField::new('brnoSchoolTypes')
+            ->setLabel('Typy škol')
+            ->setFormTypeOption('property_path', 'schoolTypes')
+            ->setChoices(array_flip(BrnoKatalogSkolDiscoverySource::SCHOOL_TYPES))
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Vyberte typy škol pro Brno Katalog (MŠ a/nebo ZŠ)')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field brno-katalog-skol-field']);
+
         if ($isDetail) {
             yield TextareaField::new('discoveryQueriesText')
                 ->setLabel('Vyhledávací dotazy')
@@ -233,33 +260,12 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
 
             yield ChoiceField::new('schoolTypes')
                 ->setLabel('Typy škol')
-                ->setChoices([
-                    'Základní školy' => 'zakladni-skoly',
-                    'Střední školy' => 'stredni-skoly',
-                    'Vysoké školy' => 'vysoke-skoly',
-                    'Vyšší odborné školy' => 'vyssi-odborne-skoly',
-                    'Jazykové školy' => 'jazykove-skoly',
-                ])
+                ->setChoices(array_flip(AtlasSkolstviDiscoverySource::SCHOOL_TYPES))
                 ->allowMultipleChoices();
 
             yield ChoiceField::new('schoolRegions')
                 ->setLabel('Kraje')
-                ->setChoices([
-                    'Praha' => 'praha',
-                    'Středočeský' => 'stredocesky',
-                    'Jihočeský' => 'jihocesky',
-                    'Plzeňský' => 'plzensky',
-                    'Karlovarský' => 'karlovarsky',
-                    'Ústecký' => 'ustecky',
-                    'Liberecký' => 'liberecky',
-                    'Královéhradecký' => 'kralovehradecky',
-                    'Pardubický' => 'pardubicky',
-                    'Vysočina' => 'vysocina',
-                    'Jihomoravský' => 'jihomoravsky',
-                    'Olomoucký' => 'olomoucky',
-                    'Zlínský' => 'zlinsky',
-                    'Moravskoslezský' => 'moravskoslezsky',
-                ])
+                ->setChoices(array_flip(AtlasSkolstviDiscoverySource::REGIONS))
                 ->allowMultipleChoices();
         }
 
@@ -384,7 +390,6 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
         $duplicate->setUser($original->getUser());
         $duplicate->setName($original->getName() . ' (kopie)');
         $duplicate->setDescription($original->getDescription());
-        $duplicate->setIndustry($original->getIndustry());
         $duplicate->setIsDefault(false); // Never duplicate as default
         $duplicate->setDiscoveryEnabled($original->isDiscoveryEnabled());
         $duplicate->setDiscoverySource($original->getDiscoverySource());
@@ -441,5 +446,4 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
 
         return $this->redirect($context->getReferrer() ?? $fallbackUrl);
     }
-
 }

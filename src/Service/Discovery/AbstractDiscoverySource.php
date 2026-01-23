@@ -168,6 +168,7 @@ abstract class AbstractDiscoverySource implements DiscoverySourceInterface
             'youtube.com', 'tiktok.com',
             'wikipedia.org',
             'seznam.cz', 'firmy.cz', 'ekatalog.cz', 'atlasskolstvi.cz', 'seznamskol.cz', 'zivefirmy.cz', 'najisto.centrum.cz', 'zlatestranky.cz',
+            'skoly-online.cz', 'stredniskoly.cz',
             'bing.com', 'yahoo.com',
             'github.com', 'stackoverflow.com',
         ];

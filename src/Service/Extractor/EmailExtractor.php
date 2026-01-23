@@ -9,6 +9,11 @@ class EmailExtractor implements ContactExtractorInterface
     private const EMAIL_PATTERN = '/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/i';
     private const MAILTO_PATTERN = '/mailto:([^"\'>\s?]+)/i';
 
+    // Pattern for obfuscated emails using data attributes (e.g., brno.cz)
+    // <a href="mailto:" data-mail="posta" data-domain="brno.cz">
+    private const OBFUSCATED_EMAIL_PATTERN = '/data-mail=["\']([^"\']+)["\'][^>]*data-domain=["\']([^"\']+)["\']/i';
+    private const OBFUSCATED_EMAIL_PATTERN_ALT = '/data-domain=["\']([^"\']+)["\'][^>]*data-mail=["\']([^"\']+)["\']/i';
+
     // Domains to ignore (fake/placeholder emails)
     private const IGNORED_DOMAINS = [
         'example.com',
@@ -75,6 +80,15 @@ class EmailExtractor implements ContactExtractorInterface
             }
         }
 
+        // Extract obfuscated emails (data-mail + data-domain pattern)
+        // Used by sites like brno.cz to prevent scraping
+        $obfuscatedEmails = $this->extractObfuscatedEmails($html);
+        foreach ($obfuscatedEmails as $email) {
+            if ($this->isValidEmail($email)) {
+                $emails[] = $email;
+            }
+        }
+
         // Strip non-content elements that may contain asset filenames with @ symbols
         // (e.g., retina images like "logo@2x.webp")
         $cleanedHtml = $this->stripNonContentElements($html);
@@ -94,6 +108,43 @@ class EmailExtractor implements ContactExtractorInterface
         $emails = $this->sortByPriority($emails);
 
         return array_values($emails);
+    }
+
+    /**
+     * Extract emails obfuscated using data-mail and data-domain attributes.
+     *
+     * Pattern: <a href="mailto:" data-mail="info" data-domain="example.cz">
+     * Result: info@example.cz
+     *
+     * @return array<string>
+     */
+    private function extractObfuscatedEmails(string $html): array
+    {
+        $emails = [];
+
+        // Pattern 1: data-mail before data-domain
+        if (preg_match_all(self::OBFUSCATED_EMAIL_PATTERN, $html, $matches, \PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $localPart = trim($match[1]);
+                $domain = trim($match[2]);
+                if (!empty($localPart) && !empty($domain)) {
+                    $emails[] = strtolower($localPart . '@' . $domain);
+                }
+            }
+        }
+
+        // Pattern 2: data-domain before data-mail (reversed order)
+        if (preg_match_all(self::OBFUSCATED_EMAIL_PATTERN_ALT, $html, $matches, \PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $domain = trim($match[1]);
+                $localPart = trim($match[2]);
+                if (!empty($localPart) && !empty($domain)) {
+                    $emails[] = strtolower($localPart . '@' . $domain);
+                }
+            }
+        }
+
+        return $emails;
     }
 
     /**
@@ -127,7 +178,10 @@ class EmailExtractor implements ContactExtractorInterface
 
     private function cleanEmail(string $email): string
     {
-        // Remove URL encoding
+        // Decode HTML entities (e.g., &#64; -> @)
+        $email = html_entity_decode($email, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Remove URL encoding (e.g., %40 -> @)
         $email = urldecode($email);
 
         // Remove trailing punctuation
