@@ -80,6 +80,8 @@ class PoptavkyCzSource extends AbstractDemandSource
             }
         }
 
+        $triedWithoutCategory = false;
+
         while (count($results) < $limit && $page <= 5) {
             $url = $this->buildUrl($category, $page);
 
@@ -87,6 +89,20 @@ class PoptavkyCzSource extends AbstractDemandSource
                 $response = $this->httpClient->request('GET', $url, [
                     'headers' => $this->getDefaultHeaders(),
                 ]);
+
+                $statusCode = $response->getStatusCode();
+
+                // Fallback: if category filter causes 500 error, retry without category
+                if ($statusCode >= 500 && $category !== null && !$triedWithoutCategory) {
+                    $this->logger->warning('Poptavky.cz category filter failed, retrying without filter', [
+                        'category' => $category,
+                        'status' => $statusCode,
+                    ]);
+                    $category = null;
+                    $triedWithoutCategory = true;
+                    $this->rateLimit();
+                    continue;
+                }
 
                 $html = $response->getContent();
                 $pageResults = $this->parseListingPage($html);
@@ -100,6 +116,18 @@ class PoptavkyCzSource extends AbstractDemandSource
                 $this->rateLimit();
 
             } catch (\Throwable $e) {
+                // Fallback: if category filter causes error, retry without category
+                if ($category !== null && !$triedWithoutCategory) {
+                    $this->logger->warning('Poptavky.cz category filter failed, retrying without filter', [
+                        'category' => $category,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $category = null;
+                    $triedWithoutCategory = true;
+                    $this->rateLimit();
+                    continue;
+                }
+
                 $this->logger->error('Poptavky.cz fetch failed', [
                     'url' => $url,
                     'error' => $e->getMessage(),

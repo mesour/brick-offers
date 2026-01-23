@@ -283,13 +283,15 @@ final class EmailExtractorTest extends TestCase
     }
 
     #[Test]
-    public function extract_emailInJavaScript_extracted(): void
+    public function extract_emailInJavaScript_notExtracted(): void
     {
+        // Script tags are stripped to avoid extracting asset filenames (e.g., image@2x.png)
+        // This is intentional - emails in JS are usually configuration, not contact info
         $html = '<script>var email = "info@company.cz";</script>';
 
         $result = $this->extractor->extract($html);
 
-        self::assertContains('info@company.cz', $result);
+        self::assertNotContains('info@company.cz', $result);
     }
 
     #[Test]
@@ -333,6 +335,188 @@ final class EmailExtractorTest extends TestCase
         $result = $this->extractor->extract($html);
 
         self::assertNotContains('info @ company.cz', $result);
+    }
+
+    // ==================== Image/Asset Filename Tests ====================
+
+    #[Test]
+    #[DataProvider('imageFilenameProvider')]
+    public function extract_imageFilename_excluded(string $filename): void
+    {
+        $html = "<img src=\"{$filename}\" alt=\"test\">";
+
+        $result = $this->extractor->extract($html);
+
+        self::assertNotContains(strtolower($filename), $result);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function imageFilenameProvider(): iterable
+    {
+        yield 'retina webp' => ['radnice@2x.57766654.webp'];
+        yield 'retina png' => ['logo@2x.png'];
+        yield 'retina jpg' => ['photo@2x.jpg'];
+        yield 'retina jpeg' => ['image@2x.jpeg'];
+        yield 'retina gif' => ['banner@2x.gif'];
+        yield 'retina svg' => ['icon@2x.svg'];
+        yield 'simple @2x' => ['hero@2x.webp'];
+        yield '@3x variant' => ['background@3x.png'];
+    }
+
+    #[Test]
+    public function extract_imgTagWithRetinaImage_excludedFromResults(): void
+    {
+        $html = '
+            <html>
+            <body>
+            <img src="radnice@2x.57766654.webp" alt="Building">
+            <p>Contact us at info@company.cz</p>
+            </body>
+            </html>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('info@company.cz', $result);
+        self::assertNotContains('radnice@2x.57766654.webp', $result);
+    }
+
+    #[Test]
+    public function extract_srcsetWithRetinaImages_excludedFromResults(): void
+    {
+        $html = '
+            <img srcset="logo@1x.png 1x, logo@2x.png 2x, logo@3x.png 3x" src="logo.png">
+            <p>Email: kontakt@firma.cz</p>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('kontakt@firma.cz', $result);
+        self::assertNotContains('logo@1x.png', $result);
+        self::assertNotContains('logo@2x.png', $result);
+        self::assertNotContains('logo@3x.png', $result);
+    }
+
+    #[Test]
+    public function extract_cssBackgroundImage_excludedFromResults(): void
+    {
+        $html = '
+            <style>
+            .hero { background-image: url(hero@2x.webp); }
+            .banner { background: url(banner@2x.jpg); }
+            </style>
+            <a href="mailto:info@school.cz">Contact</a>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('info@school.cz', $result);
+        self::assertNotContains('hero@2x.webp', $result);
+        self::assertNotContains('banner@2x.jpg', $result);
+    }
+
+    #[Test]
+    public function extract_scriptTagContents_excludedFromResults(): void
+    {
+        $html = '
+            <script>
+            var config = { image: "asset@2x.png" };
+            </script>
+            <p>Write to us: podpora@firma.cz</p>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('podpora@firma.cz', $result);
+        // Script contents should be stripped before extraction
+        self::assertCount(1, $result);
+    }
+
+    #[Test]
+    public function extract_dataAttributes_excludedFromResults(): void
+    {
+        $html = '
+            <div data-src="lazy@2x.webp" data-background="bg@2x.jpg">
+                <p>Email: obchod@company.cz</p>
+            </div>
+        ';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertContains('obchod@company.cz', $result);
+        self::assertNotContains('lazy@2x.webp', $result);
+        self::assertNotContains('bg@2x.jpg', $result);
+    }
+
+    #[Test]
+    #[DataProvider('fileExtensionProvider')]
+    public function extract_fileExtensionAsTLD_excluded(string $extension): void
+    {
+        $html = "<p>file@name.{$extension}</p>";
+
+        $result = $this->extractor->extract($html);
+
+        self::assertNotContains("file@name.{$extension}", $result);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function fileExtensionProvider(): iterable
+    {
+        yield 'png' => ['png'];
+        yield 'jpg' => ['jpg'];
+        yield 'jpeg' => ['jpeg'];
+        yield 'gif' => ['gif'];
+        yield 'webp' => ['webp'];
+        yield 'svg' => ['svg'];
+        yield 'ico' => ['ico'];
+        yield 'css' => ['css'];
+        yield 'js' => ['js'];
+        yield 'woff' => ['woff'];
+        yield 'woff2' => ['woff2'];
+        yield 'ttf' => ['ttf'];
+    }
+
+    #[Test]
+    public function extract_complexRetinaFilename_excluded(): void
+    {
+        // This is the exact case that was reported as bug
+        $html = '<img src="radnice@2x.57766654.webp">';
+
+        $result = $this->extractor->extract($html);
+
+        self::assertSame([], $result);
+    }
+
+    #[Test]
+    public function extract_realWorldPageWithImages_onlyExtractsRealEmails(): void
+    {
+        $html = <<<HTML
+        <html>
+        <head>
+            <style>.logo { background: url(logo@2x.png); }</style>
+        </head>
+        <body>
+            <img src="hero@2x.webp" srcset="hero@1x.webp 1x, hero@2x.webp 2x">
+            <img src="building@2x.57766654.webp" alt="Office">
+            <script>var img = "icon@2x.svg";</script>
+            <div data-image="lazy@2x.jpg">
+                <h1>Contact Us</h1>
+                <a href="mailto:info@company.cz">info@company.cz</a>
+                <p>Or email us at podpora@company.cz</p>
+            </div>
+        </body>
+        </html>
+        HTML;
+
+        $result = $this->extractor->extract($html);
+
+        self::assertCount(2, $result);
+        self::assertContains('info@company.cz', $result);
+        self::assertContains('podpora@company.cz', $result);
     }
 
     // ==================== Edge Cases ====================

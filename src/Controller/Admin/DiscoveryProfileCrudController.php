@@ -181,9 +181,50 @@ class DiscoveryProfileCrudController extends AbstractTenantCrudController
             ])
             ->allowMultipleChoices()
             ->setRequired(false)
-            ->setHelp('Volitelně omezit na vybrané kraje')
+            ->setHelp('Volitelně omezit na vybrané kraje (Atlas Školství)')
             ->onlyOnForms()
             ->setFormTypeOption('row_attr', ['class' => 'source-field atlas-skolstvi-field']);
+
+        // Seznam Škol: school types (multi-select) - uses same sourceSettings keys
+        yield ChoiceField::new('schoolTypes')
+            ->setLabel('Typy škol')
+            ->setFormTypeOption('property_path', 'schoolTypes')
+            ->setChoices([
+                'Mateřské školy' => 'materske-skoly',
+                'Základní školy' => 'zakladni-skoly',
+                'Základní umělecké školy' => 'zakladni-umelecke-skoly',
+            ])
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Vyberte typy škol pro Seznam Škol')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field seznam-skol-field']);
+
+        // Seznam Škol: regions (multi-select, optional)
+        yield ChoiceField::new('schoolRegions')
+            ->setLabel('Kraje')
+            ->setFormTypeOption('property_path', 'schoolRegions')
+            ->setChoices([
+                'Praha' => 'praha',
+                'Středočeský kraj' => 'stredocesky-kraj',
+                'Jihočeský kraj' => 'jihocesky-kraj',
+                'Plzeňský kraj' => 'plzensky-kraj',
+                'Karlovarský kraj' => 'karlovarsky-kraj',
+                'Ústecký kraj' => 'ustecky-kraj',
+                'Liberecký kraj' => 'liberecky-kraj',
+                'Královéhradecký kraj' => 'kralovehradecky-kraj',
+                'Pardubický kraj' => 'pardubicky-kraj',
+                'Kraj Vysočina' => 'kraj-vysocina',
+                'Jihomoravský kraj' => 'jihomoravsky-kraj',
+                'Olomoucký kraj' => 'olomoucky-kraj',
+                'Zlínský kraj' => 'zlinsky-kraj',
+                'Moravskoslezský kraj' => 'moravskoslezsky-kraj',
+            ])
+            ->allowMultipleChoices()
+            ->setRequired(false)
+            ->setHelp('Volitelně omezit na vybrané kraje (Seznam Škol)')
+            ->onlyOnForms()
+            ->setFormTypeOption('row_attr', ['class' => 'source-field seznam-skol-field']);
 
         if ($isDetail) {
             yield TextareaField::new('discoveryQueriesText')

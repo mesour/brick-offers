@@ -17,6 +17,7 @@ enum LeadSource: string
     case BRNO_KATALOG_SKOL = 'brno_katalog_skol';
     case PRAHA_KATALOG_SKOL = 'praha_katalog_skol';
     case SEZNAM_SKOL_EU = 'seznam_skol_eu';
+    case SEZNAM_SKOL = 'seznam_skol';
     case ZIVE_FIRMY = 'zive_firmy';
     case NAJISTO = 'najisto';
     case ZLATESTRANKY = 'zlatestranky';
@@ -44,6 +45,7 @@ enum LeadSource: string
             self::BRNO_KATALOG_SKOL => 'brno.cz',
             self::PRAHA_KATALOG_SKOL => 'praha.eu',
             self::SEZNAM_SKOL_EU => 'seznamskol.eu',
+            self::SEZNAM_SKOL => 'seznamskol.cz',
             self::SEZNAM => 'firmy.seznam.cz',
             self::ZIVE_FIRMY => 'zivefirmy.cz',
             self::NAJISTO => 'najisto.centrum.cz',
@@ -62,7 +64,7 @@ enum LeadSource: string
             self::GOOGLE, self::SEZNAM, self::FIRMY_CZ, self::EKATALOG,
             self::ZIVE_FIRMY, self::NAJISTO, self::ZLATESTRANKY => true,
             self::ATLAS_SKOLSTVI, self::BRNO_KATALOG_SKOL, self::PRAHA_KATALOG_SKOL,
-            self::SEZNAM_SKOL_EU, self::CRAWLER, self::REFERENCE_CRAWLER, self::MANUAL => false,
+            self::SEZNAM_SKOL_EU, self::SEZNAM_SKOL, self::CRAWLER, self::REFERENCE_CRAWLER, self::MANUAL => false,
         };
     }
 
@@ -74,7 +76,7 @@ enum LeadSource: string
     {
         return match ($this) {
             self::ATLAS_SKOLSTVI, self::BRNO_KATALOG_SKOL, self::PRAHA_KATALOG_SKOL,
-            self::SEZNAM_SKOL_EU => true,
+            self::SEZNAM_SKOL_EU, self::SEZNAM_SKOL => true,
             default => false,
         };
     }
@@ -208,6 +210,41 @@ enum LeadSource: string
                         'olomoucky' => 'Olomoucký',
                         'zlinsky' => 'Zlínský',
                         'moravskoslezsky' => 'Moravskoslezský',
+                    ],
+                ],
+            ],
+            self::SEZNAM_SKOL => [
+                'schoolTypes' => [
+                    'type' => 'choice',
+                    'label' => 'Typy škol',
+                    'multiple' => true,
+                    'required' => true,
+                    'options' => [
+                        'materske-skoly' => 'Mateřské školy',
+                        'zakladni-skoly' => 'Základní školy',
+                        'zakladni-umelecke-skoly' => 'Základní umělecké školy',
+                    ],
+                ],
+                'regions' => [
+                    'type' => 'choice',
+                    'label' => 'Kraje',
+                    'multiple' => true,
+                    'required' => false,
+                    'options' => [
+                        'praha' => 'Praha',
+                        'stredocesky-kraj' => 'Středočeský kraj',
+                        'jihocesky-kraj' => 'Jihočeský kraj',
+                        'plzensky-kraj' => 'Plzeňský kraj',
+                        'karlovarsky-kraj' => 'Karlovarský kraj',
+                        'ustecky-kraj' => 'Ústecký kraj',
+                        'liberecky-kraj' => 'Liberecký kraj',
+                        'kralovehradecky-kraj' => 'Královéhradecký kraj',
+                        'pardubicky-kraj' => 'Pardubický kraj',
+                        'kraj-vysocina' => 'Kraj Vysočina',
+                        'jihomoravsky-kraj' => 'Jihomoravský kraj',
+                        'olomoucky-kraj' => 'Olomoucký kraj',
+                        'zlinsky-kraj' => 'Zlínský kraj',
+                        'moravskoslezsky-kraj' => 'Moravskoslezský kraj',
                     ],
                 ],
             ],

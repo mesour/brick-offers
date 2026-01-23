@@ -29,29 +29,26 @@
         if (!sourceSelector) return;
 
         const queryBasedSources = ['google', 'seznam', 'firmy_cz', 'ekatalog', 'zive_firmy', 'najisto', 'zlatestranky'];
-        const atlasSkolstviSource = 'atlas_skolstvi';
 
         function updateFieldVisibility() {
             const selectedSource = sourceSelector.value;
             const queryFields = document.querySelectorAll('.query-based-field');
             const atlasFields = document.querySelectorAll('.atlas-skolstvi-field');
+            const seznamSkolFields = document.querySelectorAll('.seznam-skol-field');
 
             // Show/hide query-based fields
             queryFields.forEach(function(field) {
-                if (queryBasedSources.includes(selectedSource)) {
-                    field.style.display = '';
-                } else {
-                    field.style.display = 'none';
-                }
+                field.style.display = queryBasedSources.includes(selectedSource) ? '' : 'none';
             });
 
             // Show/hide Atlas Školství fields
             atlasFields.forEach(function(field) {
-                if (selectedSource === atlasSkolstviSource) {
-                    field.style.display = '';
-                } else {
-                    field.style.display = 'none';
-                }
+                field.style.display = (selectedSource === 'atlas_skolstvi') ? '' : 'none';
+            });
+
+            // Show/hide Seznam Škol fields
+            seznamSkolFields.forEach(function(field) {
+                field.style.display = (selectedSource === 'seznam_skol') ? '' : 'none';
             });
         }
 

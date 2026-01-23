@@ -22,6 +22,7 @@ use App\Service\Discovery\DiscoverySourceInterface;
 use App\Service\Discovery\DomainMatcher;
 use App\Service\Discovery\AtlasSkolstviDiscoverySource;
 use App\Service\Discovery\ReferenceDiscoverySource;
+use App\Service\Discovery\SeznamSkolDiscoverySource;
 use App\Service\Extractor\PageDataExtractor;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -161,7 +162,7 @@ final class DiscoverLeadsMessageHandler
         $seenDomains = [];
 
         // Discover and process leads progressively
-        if ($source->isCategoryBased() && $discoverySource instanceof AtlasSkolstviDiscoverySource) {
+        if ($source->isCategoryBased() && ($discoverySource instanceof AtlasSkolstviDiscoverySource || $discoverySource instanceof SeznamSkolDiscoverySource)) {
             // Category-based sources - get all results first (no extraction during discovery)
             $results = $discoverySource->discoverWithSettings($message->sourceSettings, $message->limit);
             foreach ($results as $result) {

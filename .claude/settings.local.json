@@ -98,7 +98,9 @@
       "Bash(for cat in servis strojirenstvi prumysl stroje potraviny zdravotnictvi vzdelavani finance ucetnictvi zahrada)",
       "Bash(for cat in e-shopy elektro-technika energie gastronomie potravinarstvi pravo pravni)",
       "Bash(for cat in informacni-technologie reklama-a-tisk potravinarske elektro energetika hobby nabytek ostatni)",
-      "Bash(for cat in potravinarstvi potraviny gastronomie jidlo)"
+      "Bash(for cat in potravinarstvi potraviny gastronomie jidlo)",
+      "WebFetch(domain:www.seznamskol.cz)",
+      "WebFetch(domain:www.startupjobs.cz)"
     ],
     "deny": [],
     "ask": []

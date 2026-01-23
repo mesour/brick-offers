@@ -42,7 +42,7 @@ class DemandMonitorCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('source', 's', InputOption::VALUE_REQUIRED, 'Source(s) to monitor: poptavky_cz, aaapoptavka, poptavej, nen, jobs_cz, prace_cz, all (comma-separated)')
+            ->addOption('source', 's', InputOption::VALUE_REQUIRED, 'Source(s) to monitor: poptavky_cz, aaapoptavka, poptavej, nen, jobs_cz, prace_cz, startup_jobs, all (comma-separated)')
             ->addOption('limit', 'l', InputOption::VALUE_REQUIRED, 'Maximum signals to discover per source', 50)
             ->addOption('industry', 'i', InputOption::VALUE_REQUIRED, 'Filter by industry: webdesign, eshop, real_estate, etc.')
             ->addOption('query', null, InputOption::VALUE_REQUIRED, 'Search query')
@@ -109,7 +109,7 @@ class DemandMonitorCommand extends Command
         $sourcesToUse = $this->getSourcesToUse($sourceOption);
 
         if (empty($sourcesToUse)) {
-            $io->error('No valid sources specified. Use: poptavky_cz, aaapoptavka, poptavej, nen, jobs_cz, prace_cz, or all');
+            $io->error('No valid sources specified. Use: poptavky_cz, aaapoptavka, poptavej, nen, jobs_cz, prace_cz, startup_jobs, or all');
 
             return Command::FAILURE;
         }
@@ -243,6 +243,7 @@ class DemandMonitorCommand extends Command
                 // Job portals
                 DemandSignalSource::JOBS_CZ,
                 DemandSignalSource::PRACE_CZ,
+                DemandSignalSource::STARTUP_JOBS,
             ];
         }
 
